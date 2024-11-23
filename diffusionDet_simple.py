@@ -25,7 +25,7 @@ THE FUNCTIONS THAT I DEFINED ARE:
 - cosine_beta_schedule: It generates cosine beta schedule. (should work)
 - alpha_cumprod: It generates alpha cumprod. (should work)
 - SinusoidalPositionEmbeddings: It generates sinusoidal position embeddings. (should work)
-- detection_decoder: this is the actual forward function of the model. NEED TO ENRICH IT.
+- detection_decoder: this is the actual forward function of the model "head". NEED TO ENRICH IT.
 - set_prediction_loss: It computes the loss for DiffusionDet. NOT DEFINED YET.
 - ddim_step: It is the ddim step. (should work)
 - predict_noise_from_start: It predicts noise from start. (should work)
