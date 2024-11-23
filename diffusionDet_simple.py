@@ -138,7 +138,7 @@ def detection_decoder(pb_crpt, feats, t):
     
     proposal_features = None
     box_pooler = None #????????
-    head_series = RCNNHead(".....") # list of head modules
+    head_series = RCNNHead(".....") # list of head modules ???? Need to understand it.
     
     for head_idx, rcnn_head in enumerate(head_series):
         class_logits, pred_bboxes, proposal_features = rcnn_head(feats, bboxes, proposal_features, box_pooler, time)
@@ -149,7 +149,7 @@ def detection_decoder(pb_crpt, feats, t):
 def set_prediction_loss(pb_pred, gt_boxes):
     """
     
-    code taken from: loss.py.
+    code taken from: loss.py from class SetCriterionDynamicK and HungarianMatcherDynamicK.
     
     pb_pred: [B, N, 4]
     gt_boxes: [B, *, 4]
