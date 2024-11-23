@@ -41,6 +41,8 @@ def image_encoder(images):
 
 def pad_boxes(gt_boxes, num_proposals=300):
     """
+    Code taken from: detector.py in prepare_diffusion_concat(...) function.
+    
     gt_boxes: [B, *, 4]
     """
     # Pad gt_boxes to N
@@ -65,6 +67,8 @@ def pad_boxes(gt_boxes, num_proposals=300):
 
 def cosine_beta_schedule(timesteps, s=0.008):
     """
+    code taken from: detector.py in cosine_beta_schedule(...) function.
+    
     cosine schedule
     as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
     """
@@ -77,6 +81,8 @@ def cosine_beta_schedule(timesteps, s=0.008):
 
 def alpha_cumprod(timesteps):
     """
+    code taken from: detector.py in __init__(...) function under #build diffusion comment.
+    
     t: time step
     """
     # alpha_cumprod
@@ -85,6 +91,10 @@ def alpha_cumprod(timesteps):
     return torch.cumprod(alphas, dim=0)
 
 class SinusoidalPositionEmbeddings(torch.nn.Module):
+    
+    """
+    code taken from: head.py in SinusoidalPositionEmbeddings(...) class.
+    """
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
@@ -102,6 +112,7 @@ def detection_decoder(pb_crpt, feats, t):
     """
     THIS THING SHOULD BE A CLASS WITH FORWARD METHOD. THIS IS JUST A FORWARD FUNCTION FOR NOW.
     
+    code taken from: head.py in forward(...) and __init__ functions.
     
     pb_crpt: [B, N, 4]
     feats: [B, H, W, C]
@@ -137,6 +148,9 @@ def detection_decoder(pb_crpt, feats, t):
 
 def set_prediction_loss(pb_pred, gt_boxes):
     """
+    
+    code taken from: loss.py.
+    
     pb_pred: [B, N, 4]
     gt_boxes: [B, *, 4]
     """
@@ -193,6 +207,10 @@ def train_loss(images, gt_boxes):
 
 def ddim_step(pb_t, pb_pred, t_now, t_next, timesteps=1000):
     
+    """
+    code taken from: detector.py in ddim_sample(...) function.
+    """
+    
     alphas = alpha_cumprod(timesteps)
     
     alpha = alphas[t_now]
@@ -213,6 +231,9 @@ def ddim_step(pb_t, pb_pred, t_now, t_next, timesteps=1000):
 
 def predict_noise_from_start(x_t, t, x0, timesteps=1000):
     
+    """
+    code taken from: detector.py in predict_noise_from_start(...) function.
+    """
     alphas = alpha_cumprod(timesteps)
     
     return (
@@ -221,6 +242,8 @@ def predict_noise_from_start(x_t, t, x0, timesteps=1000):
 
 def box_renewal(pb_t):
     """
+    code taken from: detector.py in ddim_sample(...) function.
+    
     pb_t: [B, N, 4]
     """
     return pb_t
