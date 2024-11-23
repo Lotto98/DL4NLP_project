@@ -7,6 +7,31 @@ from numpy import extract, linspace
 import torch
 
 
+"""
+HOW TO READ THIS FILE:
+
+I copied the pseudocode from the paper and pasted it here. It is not a working code. 
+I only enriched it with some comments and some functions that are not completely okey yet.
+
+The purpose of this file is to understand the training/evaluation algorithm.
+
+THE FUNCTIONS THAT I COPIED FROM THE PAPER ARE:
+- train_loss
+- infer
+
+THE FUNCTIONS THAT I DEFINED ARE:
+- image_encoder: It is a placeholder for the image encoder. Not further explanations are needed.
+- pad_boxes: It pads the ground truth boxes to N boxes. (should work)
+- cosine_beta_schedule: It generates cosine beta schedule. (should work)
+- alpha_cumprod: It generates alpha cumprod. (should work)
+- SinusoidalPositionEmbeddings: It generates sinusoidal position embeddings. (should work)
+- detection_decoder: this is the actual forward function of the model. NEED TO ENRICH IT.
+- set_prediction_loss: It computes the loss for DiffusionDet. NOT DEFINED YET.
+- ddim_step: It is the ddim step. (should work)
+- predict_noise_from_start: It predicts noise from start. (should work)
+- box_renewal: It renews the boxes. NOT DEFINED YET.
+"""
+
 def image_encoder(images):
     """
     images: [B, H, W, 3]
@@ -75,6 +100,9 @@ class SinusoidalPositionEmbeddings(torch.nn.Module):
 
 def detection_decoder(pb_crpt, feats, t):
     """
+    THIS THING SHOULD BE A CLASS WITH FORWARD METHOD. THIS IS JUST A FORWARD FUNCTION FOR NOW.
+    
+    
     pb_crpt: [B, N, 4]
     feats: [B, H, W, C]
     t: time step
@@ -91,9 +119,6 @@ def detection_decoder(pb_crpt, feats, t):
     
     # assert t shape (batch_size)
     time = time_mlp(t)
-
-    inter_class_logits = []
-    inter_pred_bboxes = []
 
     bs = len(feats[0])
     bboxes = pb_crpt
@@ -123,7 +148,6 @@ def set_prediction_loss(pb_pred, gt_boxes):
     """
     
     pass
-
 
 def train_loss(images, gt_boxes):
     """
@@ -165,15 +189,6 @@ def train_loss(images, gt_boxes):
     loss = set_prediction_loss(pb_pred, gt_boxes) # prediction loss
     
     return loss
-
-
-
-
-
-
-
-
-
 
 
 def ddim_step(pb_t, pb_pred, t_now, t_next, timesteps=1000):
