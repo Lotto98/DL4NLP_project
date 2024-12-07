@@ -1,0 +1,13 @@
+name: DL4NLP
+channels:
+  - nvidia
+  - pytorch
+  - defaults
+dependencies:
+  - pip
+  - python=3.12
+  - pytorch
+  - pytorch-cuda=12.4
+  - torchaudio
+  - torchvision
+prefix: /home/michele/anaconda3/envs/DL4NLP
