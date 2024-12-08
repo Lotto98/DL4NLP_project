@@ -176,7 +176,7 @@ class DynamicHead(nn.Module):
 class RCNNHead(nn.Module):
 
     def __init__(self, cfg, d_model, num_classes, dim_feedforward=2048, nhead=8, dropout=0.1, activation="relu",
-                 scale_clamp: float = _DEFAULT_SCALE_CLAMP, bbox_weights=(2.0, 2.0, 1.0, 1.0)):
+                 scale_clamp: float = _DEFAULT_SCALE_CLAMP, bbox_weights=(2.0, 1.0)): # was (2.0, 2.0, 1.0, 1.0)
         super().__init__()
 
         self.d_model = d_model
@@ -226,7 +226,7 @@ class RCNNHead(nn.Module):
             self.class_logits = nn.Linear(d_model, num_classes)
         else:
             self.class_logits = nn.Linear(d_model, num_classes + 1)
-        self.bboxes_delta = nn.Linear(d_model, 4)
+        self.bboxes_delta = nn.Linear(d_model, 2) # 4) # layer finale for bbox regression (changed from 4 to 2 dimensions)
         self.scale_clamp = scale_clamp
         self.bbox_weights = bbox_weights
 
@@ -280,8 +280,9 @@ class RCNNHead(nn.Module):
         for reg_layer in self.reg_module:
             reg_feature = reg_layer(reg_feature)
         class_logits = self.class_logits(cls_feature)
-        bboxes_deltas = self.bboxes_delta(reg_feature)
-        pred_bboxes = self.apply_deltas(bboxes_deltas, bboxes.view(-1, 4))
+        
+        bboxes_deltas = self.bboxes_delta(reg_feature) #modified to 2 output dimensions
+        pred_bboxes = self.apply_deltas(bboxes_deltas, bboxes.view(-1, 4)) 
         
         return class_logits.view(N, nr_boxes, -1), pred_bboxes.view(N, nr_boxes, -1), obj_features
 
@@ -298,30 +299,30 @@ class RCNNHead(nn.Module):
         boxes = boxes.to(deltas.dtype)
 
         widths = boxes[:, 2] - boxes[:, 0]
-        heights = boxes[:, 3] - boxes[:, 1]
+        #heights = boxes[:, 3] - boxes[:, 1] #
         ctr_x = boxes[:, 0] + 0.5 * widths
-        ctr_y = boxes[:, 1] + 0.5 * heights
+        #ctr_y = boxes[:, 1] + 0.5 * heights
 
-        wx, wy, ww, wh = self.bbox_weights
-        dx = deltas[:, 0::4] / wx
-        dy = deltas[:, 1::4] / wy
-        dw = deltas[:, 2::4] / ww
-        dh = deltas[:, 3::4] / wh
+        wx, ww = self.bbox_weights #wx, wy, ww, wh = self.bbox_weights
+        dx = deltas[:, 0::2] / wx #dx = deltas[:, 0::4] / wx 
+        #dy = deltas[:, 1::4] / wy
+        dw = deltas[:, 1::2] / ww #dw = deltas[:, 2::4] / ww
+        #dh = deltas[:, 3::4] / wh
 
         # Prevent sending too large values into torch.exp()
         dw = torch.clamp(dw, max=self.scale_clamp)
-        dh = torch.clamp(dh, max=self.scale_clamp)
+        #dh = torch.clamp(dh, max=self.scale_clamp)
 
         pred_ctr_x = dx * widths[:, None] + ctr_x[:, None]
-        pred_ctr_y = dy * heights[:, None] + ctr_y[:, None]
+        #pred_ctr_y = dy * heights[:, None] + ctr_y[:, None]
         pred_w = torch.exp(dw) * widths[:, None]
-        pred_h = torch.exp(dh) * heights[:, None]
+        #pred_h = torch.exp(dh) * heights[:, None]
 
-        pred_boxes = torch.zeros_like(deltas)
+        pred_boxes = torch.zeros(deltas.shape[0], 4, device=deltas.device, dtype=deltas.dtype)
         pred_boxes[:, 0::4] = pred_ctr_x - 0.5 * pred_w  # x1
-        pred_boxes[:, 1::4] = pred_ctr_y - 0.5 * pred_h  # y1
+        pred_boxes[:, 1::4] = 0 #pred_ctr_y - 0.5 * pred_h  # y1
         pred_boxes[:, 2::4] = pred_ctr_x + 0.5 * pred_w  # x2
-        pred_boxes[:, 3::4] = pred_ctr_y + 0.5 * pred_h  # y2
+        pred_boxes[:, 3::4] = self.image_height #pred_ctr_y + 0.5 * pred_h  # y2
 
         return pred_boxes
 

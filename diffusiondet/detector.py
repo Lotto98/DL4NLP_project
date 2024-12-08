@@ -21,7 +21,7 @@ from detectron2.structures import Boxes, ImageList, Instances
 
 from .loss import SetCriterionDynamicK, HungarianMatcherDynamicK
 from .head import DynamicHead
-from .util.box_ops import box_cxcywh_to_xyxy, box_xyxy_to_cxcywh, box_2xyxy_to_4xyxy, box_4xyxy_to_2xyxy
+from .util.box_ops import box_4xyxy_to_2xyxy, box_cxcywh_to_xyxy, box_xyxy_to_cxcywh, constant_box_xyxy
 from .util.misc import nested_tensor_from_tensor_list
 
 __all__ = ["DiffusionDet"]
@@ -301,6 +301,8 @@ class DiffusionDet(nn.Module):
         images, images_whwh = self.preprocess_image(batched_inputs)
         if isinstance(images, (list, torch.Tensor)):
             images = nested_tensor_from_tensor_list(images)
+            
+        self.image_height = images_whwh[0][1].item()
 
         # Feature Extraction.
         src = self.backbone(images.tensor)
@@ -320,6 +322,9 @@ class DiffusionDet(nn.Module):
             t = t.squeeze(-1)
             x_boxes = x_boxes * images_whwh[:, None, :]
 
+            # force two coordinates to 0 and image_height
+            x_boxes = constant_box_xyxy(x_boxes, 0, self.image_height) # make 2 dimension constant as 0 and image_height
+            
             outputs_class, outputs_coord = self.head(features, x_boxes, t, None) #need to change boxes: here we want the model to use 2D boxes
             output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
 
@@ -372,11 +377,18 @@ class DiffusionDet(nn.Module):
         :param gt_boxes: (cx, cy, w, h), normalized
         :param num_proposals:
         """
+        
+        # THIS IS DUE TO THE FACT THAT THE GT BOXES HAVE NOT CONSTANT Y COORDINATES
+        # LATER WE WILL EXPECT THAT THE GT BOXES HAVE CONSTANT Y COORDINATES AND THIS CODE WILL BE REMOVED
+        #gt_boxes = box_cxcywh_to_xyxy(gt_boxes)
+        #gt_boxes = constant_box_xyxy(gt_boxes, 0, self.image_height) # make 2 dimension constant as 0 and image_height
+        #gt_boxes = box_xyxy_to_cxcywh(gt_boxes)
+        
         t = torch.randint(0, self.num_timesteps, (1,), device=self.device).long()
-        noise = torch.randn(self.num_proposals, 2, device=self.device)
+        noise = torch.randn(self.num_proposals, 4, device=self.device)
         
         noise = box_cxcywh_to_xyxy(noise)
-        noise = box_2xyxy_to_4xyxy(noise, self.image_height)
+        noise = constant_box_xyxy(noise, 0, 0) # make 2 dimension constant as 0 and 0
         noise = box_xyxy_to_cxcywh(noise)
 
         num_gt = gt_boxes.shape[0]
@@ -385,13 +397,13 @@ class DiffusionDet(nn.Module):
             num_gt = 1
 
         if num_gt < self.num_proposals:
-            box_placeholder = torch.randn(self.num_proposals - num_gt, 2,
+            box_placeholder = torch.randn(self.num_proposals - num_gt, 4,
                                           device=self.device) / 6. + 0.5  # 3sigma = 1/2 --> sigma: 1/6
-            box_placeholder[:, 1:] = torch.clip(box_placeholder[:, 1:], min=1e-4)
+            box_placeholder[:, 2:] = torch.clip(box_placeholder[:, 2:], min=1e-4)
             
-            box_placeholder = box_cxcywh_to_xyxy(box_placeholder)
-            box_placeholder = box_2xyxy_to_4xyxy(box_placeholder, self.image_height)
-            box_placeholder = box_xyxy_to_cxcywh(box_placeholder)
+            #box_placeholder = box_cxcywh_to_xyxy(box_placeholder)
+            #box_placeholder = constant_box_xyxy(box_placeholder, 0, self.image_height) # make 2 dimension constant as 0 and image_height
+            #box_placeholder = box_xyxy_to_cxcywh(box_placeholder)
             
             x_start = torch.cat((gt_boxes, box_placeholder), dim=0)
         elif num_gt > self.num_proposals:
@@ -403,7 +415,6 @@ class DiffusionDet(nn.Module):
 
         x_start = (x_start * 2. - 1.) * self.scale
 
-        # noise sample
         x = self.q_sample(x_start=x_start, t=t, noise=noise)
 
         x = torch.clamp(x, min=-1 * self.scale, max=self.scale)

@@ -1,0 +1,48 @@
+{
+    "configurations": [
+        {
+            "type": "debugpy",
+            "request": "launch",
+            "name": "Launch demo.py",
+            "program": "${workspaceFolder}/demo.py",
+            "args": [
+            "--config-file",
+            "configs/diffdet.lvis.swinbase.yaml",
+            "--webcam",
+            "--confidence-threshold",
+            "80",
+            "--opts",
+            "MODEL.WEIGHTS",
+            "models/diffdet_lvis_swinbase.pth"
+            ]
+        },
+        {
+            "type": "debugpy",
+            "request": "launch",
+            "name": "Launch train_net.py",
+            "program": "${workspaceFolder}/train_net.py",
+            "args": [
+            "--num-gpus",
+            "1",
+            "--config-file",
+            "configs/diffdet.coco.res50.yaml"
+            ]
+        }
+    ],
+    "inputs": [
+        {
+            "type": "pickString",
+            "id": "configFile",
+            "description": "Select the configuration file",
+            "options": [
+                "configs/diffdet.coco.res101.yaml",
+                "configs/diffdet.coco.res50.300boxes.yaml",
+                "configs/diffdet.coco.res50.yaml",
+                "configs/diffdet.coco.swinbase.yaml",
+                "configs/diffdet.lvis.res101.yaml",
+                "configs/diffdet.lvis.res50.yaml",
+                "configs/diffdet.lvis.swinbase.yaml"
+            ]
+        }
+    ]
+}
