@@ -143,7 +143,7 @@ class DynamicHead(nn.Module):
         )
         return box_pooler
 
-    def forward(self, features, init_bboxes, t, init_features):
+    def forward(self, features, init_bboxes, t, init_features, image_height):
         # assert t shape (batch_size)
         time = self.time_mlp(t)
 
@@ -161,7 +161,7 @@ class DynamicHead(nn.Module):
             proposal_features = None
         
         for head_idx, rcnn_head in enumerate(self.head_series):
-            class_logits, pred_bboxes, proposal_features = rcnn_head(features, bboxes, proposal_features, self.box_pooler, time)
+            class_logits, pred_bboxes, proposal_features = rcnn_head(features, bboxes, proposal_features, self.box_pooler, time, image_height)
             if self.return_intermediate:
                 inter_class_logits.append(class_logits)
                 inter_pred_bboxes.append(pred_bboxes)
@@ -230,7 +230,7 @@ class RCNNHead(nn.Module):
         self.scale_clamp = scale_clamp
         self.bbox_weights = bbox_weights
 
-    def forward(self, features, bboxes, pro_features, pooler, time_emb):
+    def forward(self, features, bboxes, pro_features, pooler, time_emb, image_height):
         """
         :param bboxes: (N, nr_boxes, 4)
         :param pro_features: (N, nr_boxes, d_model)
@@ -282,11 +282,11 @@ class RCNNHead(nn.Module):
         class_logits = self.class_logits(cls_feature)
         
         bboxes_deltas = self.bboxes_delta(reg_feature) #modified to 2 output dimensions
-        pred_bboxes = self.apply_deltas(bboxes_deltas, bboxes.view(-1, 4)) 
+        pred_bboxes = self.apply_deltas(bboxes_deltas, bboxes.view(-1, 4), image_height) 
         
         return class_logits.view(N, nr_boxes, -1), pred_bboxes.view(N, nr_boxes, -1), obj_features
 
-    def apply_deltas(self, deltas, boxes):
+    def apply_deltas(self, deltas, boxes, image_height):
         """
         Apply transformation `deltas` (dx, dy, dw, dh) to `boxes`.
 
@@ -322,7 +322,7 @@ class RCNNHead(nn.Module):
         pred_boxes[:, 0::4] = pred_ctr_x - 0.5 * pred_w  # x1
         pred_boxes[:, 1::4] = 0 #pred_ctr_y - 0.5 * pred_h  # y1
         pred_boxes[:, 2::4] = pred_ctr_x + 0.5 * pred_w  # x2
-        pred_boxes[:, 3::4] = self.image_height #pred_ctr_y + 0.5 * pred_h  # y2
+        pred_boxes[:, 3::4] = image_height #pred_ctr_y + 0.5 * pred_h  # y2
 
         return pred_boxes
 

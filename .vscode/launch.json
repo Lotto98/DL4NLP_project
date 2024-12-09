@@ -19,6 +19,23 @@
         {
             "type": "debugpy",
             "request": "launch",
+            "name": "Launch demo.py image",
+            "program": "${workspaceFolder}/demo.py",
+            "args": [
+            "--config-file",
+            "configs/diffdet.lvis.swinbase.yaml",
+            "--input",
+            "${workspaceFolder}/datasets/COCO/train2017/000000000139.jpg",
+            "--confidence-threshold",
+            "80",
+            "--opts",
+            "MODEL.WEIGHTS",
+            "models/diffdet_lvis_swinbase.pth"
+            ]
+        },
+        {
+            "type": "debugpy",
+            "request": "launch",
             "name": "Launch train_net.py",
             "program": "${workspaceFolder}/train_net.py",
             "args": [

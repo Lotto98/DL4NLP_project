@@ -19,18 +19,25 @@ def box_xyxy_to_cxcywh(x):
          (x1 - x0), (y1 - y0)]
     return torch.stack(b, dim=-1)
 
-def constant_box_xyxy(x, min_value, max_value):
+def __constant_box(x, min_value, max_value):
     x0, y0, x1, y1 = x.unbind(-1)
     return torch.stack([x0, torch.zeros_like(x0)+min_value, x1, torch.zeros_like(x0)+max_value], dim=-1)
 
-def box_4xyxy_to_2xyxy(x):
-    x0, y0, x1, y1 = x.unbind(-1)
-    return torch.stack([x0, x1], dim=-1)
+def constant_box_xyxy(x_xyxy, min_value_xyxy, max_value_xyxy):
+    return __constant_box(x_xyxy, min_value_xyxy, max_value_xyxy)
 
-def box_2xyxy_to_4xyxy(x, image_height):
-    x0, x1 = x.unbind(-1)
-    return torch.stack([x0, torch.zeros_like(x0), x1, torch.zeros_like(x0)+image_height], dim=-1)
-
+def constant_box_cxcywh(x_cxcywh, min_value_xyxy, max_value_xyxy, scale, images_whwh):
+    values = torch.tensor([min_value_xyxy, min_value_xyxy, max_value_xyxy, max_value_xyxy], device=x_cxcywh.device, dtype=x_cxcywh.dtype)
+    
+    #convert values into cxcywh
+    values = values / images_whwh[:, None, :]
+    values = box_xyxy_to_cxcywh(values)
+    values = (values * 2 - 1.) * scale
+    values = torch.clamp(values, min=-1 * scale, max=scale)
+    
+    min_value_cxcywh, _, max_value_cxcywh, _ = values.unbind(-1)
+    
+    return __constant_box(x_cxcywh, min_value_cxcywh, max_value_cxcywh) # make 2 dimension constant as 0 and image_height
 
 # modified from torchvision to also return the union
 def box_iou(boxes1, boxes2):

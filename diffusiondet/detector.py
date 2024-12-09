@@ -21,7 +21,7 @@ from detectron2.structures import Boxes, ImageList, Instances
 
 from .loss import SetCriterionDynamicK, HungarianMatcherDynamicK
 from .head import DynamicHead
-from .util.box_ops import box_4xyxy_to_2xyxy, box_cxcywh_to_xyxy, box_xyxy_to_cxcywh, constant_box_xyxy
+from .util.box_ops import box_cxcywh_to_xyxy, box_xyxy_to_cxcywh, constant_box_xyxy, constant_box_cxcywh
 from .util.misc import nested_tensor_from_tensor_list
 
 __all__ = ["DiffusionDet"]
@@ -172,13 +172,17 @@ class DiffusionDet(nn.Module):
         x_boxes = ((x_boxes / self.scale) + 1) / 2
         x_boxes = box_cxcywh_to_xyxy(x_boxes)
         x_boxes = x_boxes * images_whwh[:, None, :]
-        outputs_class, outputs_coord = self.head(backbone_feats, x_boxes, t, None)
+        
+        x_boxes = constant_box_xyxy(x_boxes, 0, self.image_height) # make 2 dimension constant as 0 and image_height
+        
+        outputs_class, outputs_coord = self.head(backbone_feats, x_boxes, t, None, self.image_height)
 
         x_start = outputs_coord[-1]  # (batch, num_proposals, 4) predict boxes: absolute coordinates (x1, y1, x2, y2)
         x_start = x_start / images_whwh[:, None, :]
         x_start = box_xyxy_to_cxcywh(x_start)
         x_start = (x_start * 2 - 1.) * self.scale
         x_start = torch.clamp(x_start, min=-1 * self.scale, max=self.scale)
+        
         pred_noise = self.predict_noise_from_start(x, t, x_start)
 
         return ModelPrediction(pred_noise, x_start), outputs_class, outputs_coord
@@ -208,7 +212,7 @@ class DiffusionDet(nn.Module):
 
             if self.box_renewal:  # filter
                 score_per_image, box_per_image = outputs_class[-1][0], outputs_coord[-1][0]
-                threshold = 0.5
+                threshold = 0 #0.5
                 score_per_image = torch.sigmoid(score_per_image)
                 value, _ = torch.max(score_per_image, -1, keepdim=False)
                 keep_idx = value > threshold
@@ -233,9 +237,30 @@ class DiffusionDet(nn.Module):
                   c * pred_noise + \
                   sigma * noise
 
+            
+            #convert into xyxy
+            img = torch.clamp(img, min=-1 * self.scale, max=self.scale)
+            img = ((img / self.scale) + 1) / 2
+            img = box_cxcywh_to_xyxy(img)
+            img = img * images_whwh[:, None, :]
+            
+            img = constant_box_xyxy(img, 0, self.image_height) # make 2 dimension constant as 0 and image_height
+            
+            #convert back into cxcywh
+            img = img / images_whwh[:, None, :]
+            img = box_xyxy_to_cxcywh(img)
+            img = (img * 2 - 1.) * self.scale
+            img = torch.clamp(img, min=-1 * self.scale, max=self.scale)
+            
+            # TODO: not working, check later
+            img = constant_box_cxcywh(img, 0, self.image_height, self.scale, images_whwh)
+
             if self.box_renewal:  # filter
                 # replenish with randn boxes
                 img = torch.cat((img, torch.randn(1, self.num_proposals - num_remain, 4, device=img.device)), dim=1)
+                
+                img = constant_box_cxcywh(img, 0, self.image_height, self.scale, images_whwh)
+                
             if self.use_ensemble and self.sampling_timesteps > 1:
                 box_pred_per_image, scores_per_image, labels_per_image = self.inference(outputs_class[-1],
                                                                                         outputs_coord[-1],
@@ -325,7 +350,7 @@ class DiffusionDet(nn.Module):
             # force two coordinates to 0 and image_height
             x_boxes = constant_box_xyxy(x_boxes, 0, self.image_height) # make 2 dimension constant as 0 and image_height
             
-            outputs_class, outputs_coord = self.head(features, x_boxes, t, None) #need to change boxes: here we want the model to use 2D boxes
+            outputs_class, outputs_coord = self.head(features, x_boxes, t, None, self.image_height) #need to change boxes: here we want the model to use 2D boxes
             output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
 
             if self.deep_supervision:
@@ -387,9 +412,9 @@ class DiffusionDet(nn.Module):
         t = torch.randint(0, self.num_timesteps, (1,), device=self.device).long()
         noise = torch.randn(self.num_proposals, 4, device=self.device)
         
-        noise = box_cxcywh_to_xyxy(noise)
-        noise = constant_box_xyxy(noise, 0, 0) # make 2 dimension constant as 0 and 0
-        noise = box_xyxy_to_cxcywh(noise)
+        #noise = box_cxcywh_to_xyxy(noise)
+        #noise = constant_box_xyxy(noise, 0, 0) # make 2 dimension constant as 0 and 0
+        #noise = box_xyxy_to_cxcywh(noise)
 
         num_gt = gt_boxes.shape[0]
         if not num_gt:  # generate fake gt boxes if empty gt boxes
