@@ -212,7 +212,7 @@ class DiffusionDet(nn.Module):
 
             if self.box_renewal:  # filter
                 score_per_image, box_per_image = outputs_class[-1][0], outputs_coord[-1][0]
-                threshold = 0 #0.5
+                threshold = 0.5
                 score_per_image = torch.sigmoid(score_per_image)
                 value, _ = torch.max(score_per_image, -1, keepdim=False)
                 keep_idx = value > threshold
@@ -237,31 +237,14 @@ class DiffusionDet(nn.Module):
                   c * pred_noise + \
                   sigma * noise
 
-            
-            #convert into xyxy
-            img = torch.clamp(img, min=-1 * self.scale, max=self.scale)
-            img = ((img / self.scale) + 1) / 2
-            img = box_cxcywh_to_xyxy(img)
-            img = img * images_whwh[:, None, :]
-            
-            img = constant_box_xyxy(img, 0, self.image_height) # make 2 dimension constant as 0 and image_height
-            
-            #convert back into cxcywh
-            img = img / images_whwh[:, None, :]
-            img = box_xyxy_to_cxcywh(img)
-            img = (img * 2 - 1.) * self.scale
-            img = torch.clamp(img, min=-1 * self.scale, max=self.scale)
-            
-            # TODO: not working, check later
-            img = constant_box_cxcywh(img, 0, self.image_height, self.scale, images_whwh)
+            img = constant_box_cxcywh(img, 0, self.scale)
 
             if self.box_renewal:  # filter
                 # replenish with randn boxes
                 img = torch.cat((img, torch.randn(1, self.num_proposals - num_remain, 4, device=img.device)), dim=1)
-                
-                img = constant_box_cxcywh(img, 0, self.image_height, self.scale, images_whwh)
-                
+                img = constant_box_cxcywh(img, 0, self.scale)
             if self.use_ensemble and self.sampling_timesteps > 1:
+                # for Non-Maximum Suppression
                 box_pred_per_image, scores_per_image, labels_per_image = self.inference(outputs_class[-1],
                                                                                         outputs_coord[-1],
                                                                                         images.image_sizes)
@@ -535,6 +518,7 @@ class DiffusionDet(nn.Module):
                     box_pred_per_image = box_pred_per_image[keep]
                     scores_per_image = scores_per_image[keep]
                     labels_per_image = labels_per_image[keep]
+                
                 result = Instances(image_size)
                 result.pred_boxes = Boxes(box_pred_per_image)
                 result.scores = scores_per_image

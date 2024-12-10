@@ -49,7 +49,7 @@ def add_diffusiondet_config(cfg):
 
     # Diffusion
     cfg.MODEL.DiffusionDet.SNR_SCALE = 2.0
-    cfg.MODEL.DiffusionDet.SAMPLE_STEP = 2 #1
+    cfg.MODEL.DiffusionDet.SAMPLE_STEP = 1
 
     # Inference
     cfg.MODEL.DiffusionDet.USE_NMS = True

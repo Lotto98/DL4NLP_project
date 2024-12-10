@@ -26,18 +26,8 @@ def __constant_box(x, min_value, max_value):
 def constant_box_xyxy(x_xyxy, min_value_xyxy, max_value_xyxy):
     return __constant_box(x_xyxy, min_value_xyxy, max_value_xyxy)
 
-def constant_box_cxcywh(x_cxcywh, min_value_xyxy, max_value_xyxy, scale, images_whwh):
-    values = torch.tensor([min_value_xyxy, min_value_xyxy, max_value_xyxy, max_value_xyxy], device=x_cxcywh.device, dtype=x_cxcywh.dtype)
-    
-    #convert values into cxcywh
-    values = values / images_whwh[:, None, :]
-    values = box_xyxy_to_cxcywh(values)
-    values = (values * 2 - 1.) * scale
-    values = torch.clamp(values, min=-1 * scale, max=scale)
-    
-    min_value_cxcywh, _, max_value_cxcywh, _ = values.unbind(-1)
-    
-    return __constant_box(x_cxcywh, min_value_cxcywh, max_value_cxcywh) # make 2 dimension constant as 0 and image_height
+def constant_box_cxcywh(x_cxcywh, y_center , scale ):
+    return __constant_box(x_cxcywh, y_center, scale) # make 2 dimension constant as 0 and image_height
 
 # modified from torchvision to also return the union
 def box_iou(boxes1, boxes2):
