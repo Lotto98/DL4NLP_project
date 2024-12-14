@@ -59,6 +59,10 @@ def add_diffusiondet_config(cfg):
     cfg.MODEL.SWIN.SIZE = 'B'  # 'T', 'S', 'B'
     cfg.MODEL.SWIN.USE_CHECKPOINT = False
     cfg.MODEL.SWIN.OUT_FEATURES = (0, 1, 2, 3)  # modify
+    
+    # Simple Backbone
+    cfg.MODEL.SIMPLE_BACKBONE = CN()
+    cfg.MODEL.SIMPLE_BACKBONE.OUT_FEATURES = (0, 1, 2, 3)
 
     # Optimizer.
     cfg.SOLVER.OPTIMIZER = "ADAMW"

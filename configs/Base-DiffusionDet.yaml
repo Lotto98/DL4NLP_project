@@ -4,13 +4,13 @@ MODEL:
   PIXEL_MEAN: [123.675, 116.280, 103.530]
   PIXEL_STD: [58.395, 57.120, 57.375]
   BACKBONE:
-    NAME: "build_resnet_fpn_backbone"
+    NAME:  "build_simple_backbone_fpn" #"build_resnet_fpn_backbone" #"build_simple_backbone_fpn"
   RESNETS:
-    OUT_FEATURES: ["res2", "res3", "res4", "res5"]
+    OUT_FEATURES: ["res2", "res3", "res4", "res5"] #["simple1", "simple2", "simple3", "simple4"]
   FPN:
     IN_FEATURES: ["res2", "res3", "res4", "res5"]
   ROI_HEADS:
-    IN_FEATURES: ["p2", "p3", "p4", "p5"]
+    IN_FEATURES:  ["p1", "p2", "p3", "p4"] 
   ROI_BOX_HEAD:
     POOLER_TYPE: "ROIAlignV2"
     POOLER_RESOLUTION: 7
