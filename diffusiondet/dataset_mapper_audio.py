@@ -1,4 +1,5 @@
 import copy
+import json
 import logging
 import numpy as np
 import torch
@@ -104,23 +105,31 @@ class DiffusionDetAudioDatasetMapper(DatasetMapper):
         return dataset_dict
     
 from detectron2.data import DatasetCatalog, MetadataCatalog
+import os
 
-def register_ami_segmentation(name, audio_root="datasets/ami/audio", annotation_root="datasets/ami/annotations"):
-    def load_ami_data():
-        import os
-        dataset_dicts = []
-        for audio_file in os.listdir(audio_root):
-            if audio_file.endswith(".wav"):
-                file_name = os.path.join(audio_root, audio_file)
-                annotation_file = os.path.join(annotation_root, audio_file.replace(".wav", ".xml"))
-                dataset_dicts.append({
-                    "file_name": file_name,
-                    "annotation_file": annotation_file
-                })
-        return dataset_dicts
+def register_ami_segmentation(name, split, audio_root="datasets/ami/audio", 
+                                annotation_root="datasets/ami/annotations"):
+    
+    def load_ami():
+    
+        if not os.path.exists(annotation_root):
+            raise ValueError(f"Annotation root {annotation_root} does not exist.")
+        
+        with open(os.path.join(annotation_root, f"{split}.json"), "r") as f:
+            annotations = json.load(f)
+        
+        for annotation in annotations:
+            file_name = annotation["file_name"]
+            annotation["file_name"] = os.path.join(audio_root, f"{file_name}.wav")    
+        
+        return annotations
 
-    DatasetCatalog.register(name, load_ami_data)
+    DatasetCatalog.register(name, load_ami)
+    
+    #???? WTF is this
     MetadataCatalog.get(name).set(thing_classes=["Speaker1", "Speaker2", "Speaker3"])
 
 # Register the dataset
-register_ami_segmentation("ami_segmentation", "/path/to/audio", "/path/to/annotations")
+register_ami_segmentation("ami_train", "train")
+register_ami_segmentation("ami_val", "val")
+register_ami_segmentation("ami_test", "test")
