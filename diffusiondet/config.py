@@ -60,9 +60,10 @@ def add_diffusiondet_config(cfg):
     cfg.MODEL.SWIN.USE_CHECKPOINT = False
     cfg.MODEL.SWIN.OUT_FEATURES = (0, 1, 2, 3)  # modify
     
-    # Simple Backbone
-    cfg.MODEL.SIMPLE_BACKBONE = CN()
-    cfg.MODEL.SIMPLE_BACKBONE.OUT_FEATURES = (0, 1, 2, 3)
+    # AST
+    cfg.MODEL.AST = CN()
+    cfg.MODEL.AST.OUT_CHANNELS = 768
+    cfg.MODEL.AST.OUT_FEATURES = ("AST_0", "AST_3", "AST_6", "AST_9")
 
     # Optimizer.
     cfg.SOLVER.OPTIMIZER = "ADAMW"

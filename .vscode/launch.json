@@ -49,7 +49,8 @@
         "--num-gpus",
         "1",
         "--config-file",
-        "configs/diffdet.coco.res50.yaml"
+        //"configs/diffdet.coco.res50.yaml"
+        "configs/diffdet.ami.ast.yaml"
       ]
     }
   ],

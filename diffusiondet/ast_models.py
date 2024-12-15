@@ -10,29 +10,19 @@ import torch.nn as nn
 from torch.cuda.amp import autocast
 import os
 import wget
-os.environ['TORCH_HOME'] = '../../pretrained_models'
-import timm_045 as timm
-from timm.models.layers import to_2tuple,trunc_normal_
+os.environ['TORCH_HOME'] = 'pretrained_models/'
+#import .timm_045 as timm
+from .timm_045.models.layers import to_2tuple,trunc_normal_
+from .timm_045 import create_model, __version__
 
-# override the timm package to relax the input shape constraint.
-class PatchEmbed(nn.Module):
-    def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
-        super().__init__()
+from detectron2.modeling.backbone.backbone import Backbone
+from detectron2.modeling.backbone.build import BACKBONE_REGISTRY
+from detectron2.modeling.backbone.fpn import FPN
+from detectron2.layers import ShapeSpec
 
-        img_size = to_2tuple(img_size)
-        patch_size = to_2tuple(patch_size)
-        num_patches = (img_size[1] // patch_size[1]) * (img_size[0] // patch_size[0])
-        self.img_size = img_size
-        self.patch_size = patch_size
-        self.num_patches = num_patches
+# override the timm_045 package to relax the input shape constraint.
 
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
-
-    def forward(self, x):
-        x = self.proj(x).flatten(2).transpose(1, 2)
-        return x
-
-class ASTModel(nn.Module):
+class ASTModel(Backbone):
     """
     The AST model.
     :param label_dim: the label dimension, i.e., the number of total classes, it is 527 for AudioSet, 50 for ESC-50, and 35 for speechcommands v2-35
@@ -47,30 +37,30 @@ class ASTModel(nn.Module):
     def __init__(self, label_dim=527, fstride=10, tstride=10, input_fdim=128, input_tdim=1024, imagenet_pretrain=True, audioset_pretrain=False, model_size='base384', verbose=True):
 
         super(ASTModel, self).__init__()
-        assert timm.__version__ == '0.4.5', f'Please use timm == 0.4.5, the code might not be compatible with newer versions. Your current version is {timm.__version__}'
+        assert __version__ == '0.4.5', f'Please use timm_045 == 0.4.5, the code might not be compatible with newer versions. Your current version is {timm_045.__version__}'
 
         if verbose == True:
             print('---------------AST Model Summary---------------')
             print('ImageNet pretraining: {:s}, AudioSet pretraining: {:s}'.format(str(imagenet_pretrain),str(audioset_pretrain)))
-        # override timm input shape restriction
-        timm.models.vision_transformer.PatchEmbed = PatchEmbed
+        # override timm_045 input shape restriction
+        #timm_045.models.vision_transformer.PatchEmbed = PatchEmbed
 
         # if AudioSet pretraining is not used (but ImageNet pretraining may still apply)
         if audioset_pretrain == False:
             if model_size == 'tiny224':
-                self.v = timm.create_model('vit_deit_tiny_distilled_patch16_224', pretrained=imagenet_pretrain)
+                self.v = create_model('vit_deit_tiny_distilled_patch16_224', pretrained=imagenet_pretrain)
             elif model_size == 'small224':
-                self.v = timm.create_model('vit_deit_small_distilled_patch16_224', pretrained=imagenet_pretrain)
+                self.v = create_model('vit_deit_small_distilled_patch16_224', pretrained=imagenet_pretrain)
             elif model_size == 'base224':
-                self.v = timm.create_model('vit_deit_base_distilled_patch16_224', pretrained=imagenet_pretrain)
+                self.v = create_model('vit_deit_base_distilled_patch16_224', pretrained=imagenet_pretrain)
             elif model_size == 'base384':
-                self.v = timm.create_model('vit_deit_base_distilled_patch16_384', pretrained=imagenet_pretrain)
+                self.v = create_model('vit_deit_base_distilled_patch16_384', pretrained=imagenet_pretrain)
             else:
                 raise Exception('Model size must be one of tiny224, small224, base224, base384.')
             self.original_num_patches = self.v.patch_embed.num_patches
             self.oringal_hw = int(self.original_num_patches ** 0.5)
             self.original_embedding_dim = self.v.pos_embed.shape[2]
-            self.mlp_head = nn.Sequential(nn.LayerNorm(self.original_embedding_dim), nn.Linear(self.original_embedding_dim, label_dim))
+            #self.mlp_head = nn.Sequential(nn.LayerNorm(self.original_embedding_dim), nn.Linear(self.original_embedding_dim, label_dim))
 
             # automatcially get the intermediate shape
             f_dim, t_dim = self.get_shape(fstride, tstride, input_fdim, input_tdim)
@@ -131,7 +121,7 @@ class ASTModel(nn.Module):
             audio_model.load_state_dict(sd, strict=False)
             self.v = audio_model.module.v
             self.original_embedding_dim = self.v.pos_embed.shape[2]
-            self.mlp_head = nn.Sequential(nn.LayerNorm(self.original_embedding_dim), nn.Linear(self.original_embedding_dim, label_dim)).to(device)
+            #self.mlp_head = nn.Sequential(nn.LayerNorm(self.original_embedding_dim), nn.Linear(self.original_embedding_dim, label_dim)).to(device)
 
             f_dim, t_dim = self.get_shape(fstride, tstride, input_fdim, input_tdim)
             num_patches = f_dim * t_dim
@@ -155,6 +145,8 @@ class ASTModel(nn.Module):
             new_pos_embed = new_pos_embed.reshape(1, 768, num_patches).transpose(1, 2)
             self.v.pos_embed = nn.Parameter(torch.cat([self.v.pos_embed[:, :2, :].detach(), new_pos_embed], dim=1))
 
+        self._output_shape = {}
+    
     def get_shape(self, fstride, tstride, input_fdim=128, input_tdim=1024):
         test_input = torch.randn(1, 1, input_fdim, input_tdim)
         test_proj = nn.Conv2d(1, self.original_embedding_dim, kernel_size=(16, 16), stride=(fstride, tstride))
@@ -181,20 +173,67 @@ class ASTModel(nn.Module):
         x = x + self.v.pos_embed
         x = self.v.pos_drop(x)
         print(x.shape)
-        for blk in self.v.blocks:
+        
+        stride = 1
+        features = {}
+        for i, blk in enumerate(self.v.blocks):
             x = blk(x)
-            print(x.shape)
-        x = self.v.norm(x)
-        x = (x[:, 0] + x[:, 1]) / 2
+            
+            if i % 3 == 0:
+                y = self.v.norm(x)
+                y = (y[:, 0] + y[:, 1]) / 2
+                
+                # TODO: try also with conv2d: the model learn the weights
+                # downsampled_y = nn.Conv2d(y.shape[1], y.shape[1], kernel_size=1, stride=2, padding=0)(y)
 
-        x = self.mlp_head(x)
-        return x
+                features[f"AST_{i}"]=(nn.functional.max_pool2d(y, kernel_size=1, stride=stride))
+                self._output_shape[f"AST_{i}"] = ShapeSpec(channels=features[f"AST_{i}"].shape[0], stride=stride)
+                stride *= 2
+            
+            #print(x.shape)
+            
+        # not needed for now
+        #x = self.v.norm(x)
+        #x = (x[:, 0] + x[:, 1]) / 2
+    
+        #x = self.mlp_head(x)
+        return features
+    
+    def output_shape(self):
+        return {
+            
+        }
+
+@BACKBONE_REGISTRY.register()
+def build_ASTModel_backbone(cfg, input_shape: ShapeSpec):
+    """
+    """
+    return ASTModel(input_tdim = 100, input_fdim = 128, audioset_pretrain=True, imagenet_pretrain=True, model_size='base384')
+
+
+@BACKBONE_REGISTRY.register()
+def build_ASTModel_backbone_fpn(cfg, input_shape: ShapeSpec):
+    """
+    """
+    bottom_up = build_ASTModel_backbone(cfg, input_shape)
+    in_features = cfg.MODEL.FPN.IN_FEATURES
+    out_channels = cfg.MODEL.FPN.OUT_CHANNELS
+    print(in_features, out_channels)
+    backbone = FPN(
+        bottom_up=bottom_up,
+        in_features=in_features,
+        out_channels=out_channels,
+        norm=cfg.MODEL.FPN.NORM,
+        fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
+    )
+    return backbone
 
 if __name__ == '__main__':
-    input_tdim = 100
-    ast_mdl = ASTModel(input_tdim=input_tdim, audioset_pretrain=True, imagenet_pretrain=True, model_size='base384')
+    input_tdim = 200
+    ast_mdl = ASTModel(input_tdim = input_tdim, input_fdim = 128, audioset_pretrain=True, imagenet_pretrain=True, model_size='base384')
     # input a batch of 10 spectrogram, each with 100 time frames and 128 frequency bins
     test_input = torch.rand([10, input_tdim, 128], dtype=torch.float32).to('cuda')
     test_output = ast_mdl(test_input)
     # output should be in shape [10, 527], i.e., 10 samples, each with prediction of 527 classes.
-    print(test_output.shape)
+    for k, v in test_output.items():
+        print(k, v.shape)

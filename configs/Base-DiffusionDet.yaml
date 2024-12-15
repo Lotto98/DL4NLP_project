@@ -4,13 +4,16 @@ MODEL:
   PIXEL_MEAN: [123.675, 116.280, 103.530]
   PIXEL_STD: [58.395, 57.120, 57.375]
   BACKBONE:
-    NAME:  "build_simple_backbone_fpn" #"build_resnet_fpn_backbone" #"build_simple_backbone_fpn"
-  RESNETS:
-    OUT_FEATURES: ["res2", "res3", "res4", "res5"] #["simple1", "simple2", "simple3", "simple4"]
+    NAME:  "build_ASTModel_backbone_fpn" #"build_resnet_fpn_backbone" #"build_simple_backbone_fpn"
+  #RESNETS:
+    #OUT_FEATURES: ["res2", "res3", "res4", "res5"] #["simple1", "simple2", "simple3", "simple4"]
+  AST:
+    OUT_FEATURES: ["AST_2", "AST_3", "AST_4", "AST_5"]
+    OUT_CHANNELS: 768
   FPN:
-    IN_FEATURES: ["res2", "res3", "res4", "res5"]
+    IN_FEATURES: ["AST_2", "AST_3", "AST_4", "AST_5"] #["simple1", "simple2", "simple3", "simple4"]
   ROI_HEADS:
-    IN_FEATURES:  ["p1", "p2", "p3", "p4"] 
+    IN_FEATURES:  ['p3', 'p4', 'p5', 'p6']
   ROI_BOX_HEAD:
     POOLER_TYPE: "ROIAlignV2"
     POOLER_RESOLUTION: 7
@@ -39,7 +42,7 @@ INPUT:
     SIZE: (384, 600)
   FORMAT: "RGB"
 TEST:
-  EVAL_PERIOD: 7330
+  EVAL_PERIOD: 2 #7330
 DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: False
   NUM_WORKERS: 4

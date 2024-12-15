@@ -1,5 +1,8 @@
 /DiffusionDet-main/
+/datasets_old
 /datasets
 /output
 /models
 /.idea
+/diffusiondet/pretrained_models
+/diffusiondet/__pycache__
