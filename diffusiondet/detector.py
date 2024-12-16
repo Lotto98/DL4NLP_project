@@ -156,9 +156,9 @@ class DiffusionDet(nn.Module):
             cfg=cfg, num_classes=self.num_classes, matcher=matcher, weight_dict=weight_dict, eos_coef=no_object_weight,
             losses=losses, use_focal=self.use_focal,)
 
-        pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).to(self.device).view(3, 1, 1)
-        pixel_std = torch.Tensor(cfg.MODEL.PIXEL_STD).to(self.device).view(3, 1, 1)
-        self.normalizer = lambda x: (x - pixel_mean) / pixel_std
+        #pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).to(self.device).view(3, 1, 1)
+        #pixel_std = torch.Tensor(cfg.MODEL.PIXEL_STD).to(self.device).view(3, 1, 1)
+        #self.normalizer = lambda x: (x - pixel_mean) / pixel_std
         self.to(self.device)
 
     def predict_noise_from_start(self, x_t, t, x0):
@@ -531,8 +531,8 @@ class DiffusionDet(nn.Module):
         """
         Normalize, pad and batch the input images.
         """
-        images = [self.normalizer(x["image"].to(self.device)) for x in batched_inputs]
-        images = ImageList.from_tensors(images, self.size_divisibility)
+        images = [x["image"].to(self.device) for x in batched_inputs]
+        images = ImageList.from_tensors(images, 0) # self.size_divisibility)
 
         images_whwh = list()
         for bi in batched_inputs:

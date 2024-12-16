@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 from detectron2.modeling import Backbone
 from detectron2.layers import ShapeSpec
 from detectron2.modeling.backbone import BACKBONE_REGISTRY
@@ -17,6 +18,8 @@ class ASTBackboneMultiScale(Backbone):
         self.out_channels = ast_model.config.hidden_size  # AST layers
         self.out_features = out_features
         self.num_layers = ast_model.config.num_hidden_layers  # AST layers
+        
+        self.norm = torch.nn.LayerNorm(self.out_channels)
 
     def forward(self, x):
         """
@@ -25,7 +28,9 @@ class ASTBackboneMultiScale(Backbone):
         Returns:
             A dictionary of multi-scale feature maps.
         """
-        B, C, H, W = x.shape
+        print(x.shape)
+        
+        B, H, W = x.shape
         
         # Forward pass through the AST model
         outputs = self.ast_model(x, output_hidden_states=True)
@@ -33,11 +38,22 @@ class ASTBackboneMultiScale(Backbone):
         
         # Define multi-scale outputs (res2, res3, res4, res5)
         feature_maps = {}
-        for i, scale in enumerate(self.out_features):
-            features = hidden_states[i + 1]  # Select the corresponding transformer block output
-            num_patches = int(features.size(1) ** 0.5)  # Assuming square patches
-            feature_map = features.view(B, num_patches, num_patches, -1).permute(0, 3, 1, 2)  # Reshape to (B, C, H, W)
-            feature_maps[scale] = feature_map
+        layers = [3, 6, 9, 12]
+        scale = 1
+        for layer_index in layers:
+            
+            # padding to make H and W even
+            pad_input = (H % 2 == 1) or (W % 2 == 1)
+            if pad_input:
+                x = F.pad(x, (0, 0, 0, W % 2, 0, H % 2))
+
+            x0 = x[:, 0::scale, 0::scale]  # B H/2 W/2
+            x1 = x[:, 1::scale, 0::scale]  # B H/2 W/2
+            x2 = x[:, 0::scale, 1::scale]  # B H/2 W/2
+            x3 = x[:, 1::scale, 1::scale]  # B H/2 W/2
+            x = torch.cat([x0, x1, x2, x3], -1)  
+            
+            scale *= 2
 
         return feature_maps
 
@@ -54,7 +70,9 @@ def build_ASTModel_backbone(cfg, input_shape: ShapeSpec):
     """
     """
     model = ASTBackboneMultiScale(
-        ast_model = ASTModel(ASTConfig()),
+        ast_model = ASTModel(ASTConfig(
+            max_length=cfg.INPUT.SAMPLING_RATE * cfg.INPUT.SECONDS_PER_SEGMENT,
+        )),
         out_features = cfg.MODEL.AST.OUT_FEATURES
     )
     

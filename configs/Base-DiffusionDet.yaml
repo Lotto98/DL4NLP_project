@@ -1,4 +1,5 @@
 MODEL:
+  DEVICE: "cpu"
   META_ARCHITECTURE: "DiffusionDet"
   WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl"
   PIXEL_MEAN: [123.675, 116.280, 103.530]

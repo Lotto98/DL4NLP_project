@@ -1,3 +1,10 @@
+_BASE_: "Base-DiffusionDet.yaml"
 DATASETS:
-  TRAIN: ("ami",)
-  TEST:  ("ami_train",)
+  TRAIN: ("ami_train",)
+  # EVAL: ("ami_val",)
+  TEST:  ("ami_test",)
+INPUT:
+  SAMPLING_RATE: 100
+  SECONDS_PER_SEGMENT: 10
+  TOT_BATCH_SIZE: 1
+  NUM_WORKERS: 1

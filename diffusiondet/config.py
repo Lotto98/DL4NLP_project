@@ -68,7 +68,13 @@ def add_diffusiondet_config(cfg):
     # Optimizer.
     cfg.SOLVER.OPTIMIZER = "ADAMW"
     cfg.SOLVER.BACKBONE_MULTIPLIER = 1.0
-
+    
+    #INPUT
+    cfg.INPUT.SAMPLING_RATE = 100
+    cfg.INPUT.SECONDS_PER_SEGMENT = 10
+    cfg.INPUT.TOT_BATCH_SIZE = 1
+    cfg.INPUT.NUM_WORKERS = 1
+    
     # TTA.
     cfg.TEST.AUG.MIN_SIZES = (400, 500, 600, 640, 700, 900, 1000, 1100, 1200, 1300, 1400, 1800, 800)
     cfg.TEST.AUG.CVPODS_TTA = True

@@ -25,7 +25,7 @@ import detectron2.utils.comm as comm
 from detectron2.utils.logger import setup_logger
 from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
-from detectron2.data import build_detection_train_loader
+from detectron2.data import build_batch_data_loader
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, launch, create_ddp_model, \
     AMPTrainer, SimpleTrainer, hooks
 from detectron2.evaluation import COCOEvaluator, LVISEvaluator, verify_results
@@ -33,6 +33,7 @@ from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.modeling import build_model
 
 from diffusiondet import DiffusionDetDatasetMapper, add_diffusiondet_config, DiffusionDetWithTTA
+from diffusiondet.dataset_audio import DiffusionDetAudioDataset
 from diffusiondet.util.model_ema import add_model_ema_configs, may_build_model_ema, may_get_ema_checkpointer, EMAHook, \
     apply_model_ema_and_restore, EMADetectionCheckpointer
 
@@ -50,7 +51,7 @@ class Trainer(DefaultTrainer):
         if not logger.isEnabledFor(logging.INFO):  # setup_logger is not called for d2
             setup_logger()
         cfg = DefaultTrainer.auto_scale_workers(cfg, comm.get_world_size())
-
+        
         # Assume these objects must be constructed in this order.
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
@@ -114,8 +115,19 @@ class Trainer(DefaultTrainer):
 
     @classmethod
     def build_train_loader(cls, cfg):
-        mapper = DiffusionDetDatasetMapper(cfg, is_train=True)
-        return build_detection_train_loader(cfg, mapper=mapper)
+        #mapper = DiffusionDetDatasetMapper(cfg, is_train=True)
+        #return build_detection_train_loader(cfg, mapper=mapper)
+        
+        dataset = DiffusionDetAudioDataset(name="ami", split="train", cfg=cfg)
+        
+        return build_batch_data_loader(dataset,
+                total_batch_size=cfg.INPUT.TOT_BATCH_SIZE,
+                num_workers=cfg.INPUT.NUM_WORKERS,
+                pin_memory=True,
+                drop_last=False,
+                sampler=None
+            )
+        
 
     @classmethod
     def build_optimizer(cls, cfg, model):

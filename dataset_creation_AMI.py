@@ -12,6 +12,8 @@ def create_annotations_ami(split:str="train"):
     
         # Convert the train dataset to a pandas DataFrame
         df = dataset.to_pandas()[["meeting_id","speaker_id","begin_time", "end_time"]]
+        
+        #print(sorted(df["speaker_id"].unique())) 
 
         # Group by meeting_id and aggregate begin_time and end_time into lists
         aggregated_df = df.groupby('meeting_id').agg(list).reset_index()
@@ -27,6 +29,7 @@ def create_annotations_ami(split:str="train"):
     ds = load_dataset("edinburghcstr/ami", "ihm", split=split)
     ds_dict, meeting_ids = get_time_pairs_from_dataset(ds)
     
+    """
     annotations = []
     
     for meeting in ds_dict:
@@ -39,11 +42,12 @@ def create_annotations_ami(split:str="train"):
                 "time_pair": time_pair,
                 "speaker_id": speaker_id
             })
-
+    """
+    
     os.makedirs("datasets/ami/annotations", exist_ok=True)
     
     with open(f'datasets/ami/annotations/{split}.json', 'w') as fp:
-        json.dump(annotations, fp)
+        json.dump(ds_dict, fp)
     
     return meeting_ids
 
