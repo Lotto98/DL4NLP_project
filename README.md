@@ -1,8 +1,47 @@
-# DL4NLP_project
+# DL4NLP Project
 
-How to RUN:
-- clone the repo
-- download anaconda
-- conda env create -f environment.yml
-- activate the environment 
-- python3 -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
+## How to Run
+
+### 1. Install Dependencies
+
+1. Clone the repository:
+    ```sh
+    git clone <repository_url>
+    cd DL4NLP_project
+    ```
+    Replace `<repository_url>` with the actual URL of the repository.
+
+2. Download and install Anaconda from [here](https://www.anaconda.com/products/distribution).
+
+3. Create the conda environment:
+    ```sh
+    conda env create -f environment.yml
+    ```
+
+4. Activate the conda environment:
+    ```sh
+    conda activate DL4NLP
+    ```
+
+5. Install Detectron2:
+    ```sh
+    python3 -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
+    ```
+
+### 2. Train the Model (Optional)
+
+To train the model on the AMI dataset using the AST backbone, run:
+```sh
+python3 train_net.py --num-gpus n --config-file configs/diffdet.ami.ast.yaml
+```
+
+### 3. Inference
+
+To perform inference, run:
+```sh
+python3 ...
+```
+
+## Additional Information
+
+For more details, refer to the [documentation](docs/documentation.md).
