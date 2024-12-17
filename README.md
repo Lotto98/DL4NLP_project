@@ -26,6 +26,20 @@
     python3 -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
     ```
 
+## Create the dataset
+
+### AMI dataset
+
+To create the AMI dataset, follow these steps:
+
+1. Run the `dataset_creation_AMI.py` script to create annotations and download audio files:
+    ```sh
+    python3 dataset_creation_AMI.py --split all
+    ```
+    This will create annotations and download audio files for the train, validation, and test splits.
+
+2. The annotations will be saved in the `datasets/ami/annotations` directory and the audio files will be saved in the `datasets/ami/audio` directory.
+
 ## Train the Model (Optional)
 
 To train the model on the AMI dataset using the AST backbone, run:
