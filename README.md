@@ -1,8 +1,6 @@
 # DL4NLP Project
 
-## How to Run
-
-### 1. Install Dependencies
+## How to Install
 
 1. Clone the repository:
     ```sh
@@ -28,14 +26,14 @@
     python3 -m pip install 'git+https://github.com/facebookresearch/detectron2.git'
     ```
 
-### 2. Train the Model (Optional)
+## Train the Model (Optional)
 
 To train the model on the AMI dataset using the AST backbone, run:
 ```sh
 python3 train_net.py --num-gpus n --config-file configs/diffdet.ami.ast.yaml
 ```
 
-### 3. Inference
+## Inference
 
 To perform inference, run:
 ```sh
