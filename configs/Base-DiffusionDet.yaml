@@ -1,20 +1,14 @@
 MODEL:
   DEVICE: "cpu"
   META_ARCHITECTURE: "DiffusionDet"
-  WEIGHTS: "detectron2://ImageNetPretrained/torchvision/R-50.pkl"
-  PIXEL_MEAN: [123.675, 116.280, 103.530]
-  PIXEL_STD: [58.395, 57.120, 57.375]
-  BACKBONE:
-    NAME:  "build_ASTModel_backbone_fpn" #"build_resnet_fpn_backbone" #"build_simple_backbone_fpn"
-  #RESNETS:
-    #OUT_FEATURES: ["res2", "res3", "res4", "res5"] #["simple1", "simple2", "simple3", "simple4"]
   AST:
-    OUT_FEATURES: ["AST_2", "AST_3", "AST_4", "AST_5"]
-    OUT_CHANNELS: 768
+    OUT_FEATURES: ["AST_3", "AST_3", "AST_4", "AST_5"]
+    OUT_CHANNELS: 1 #768
   FPN:
-    IN_FEATURES: ["AST_2", "AST_3", "AST_4", "AST_5"] #["simple1", "simple2", "simple3", "simple4"]
+    IN_FEATURES: ["AST_3", "AST_6", "AST_9", "AST_12"] #["simple1", "simple2", "simple3", "simple4"]
+    OUT_CHANNELS: 256
   ROI_HEADS:
-    IN_FEATURES:  ['p3', 'p4', 'p5', 'p6']
+    IN_FEATURES:  ['p0', 'p1', 'p2', 'p3']
   ROI_BOX_HEAD:
     POOLER_TYPE: "ROIAlignV2"
     POOLER_RESOLUTION: 7
@@ -35,16 +29,16 @@ SOLVER:
     CLIP_VALUE: 1.0
     NORM_TYPE: 2.0
 SEED: 40244023
-INPUT:
-  MIN_SIZE_TRAIN: (480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800)
-  CROP:
-    ENABLED: False
-    TYPE: "absolute_range"
-    SIZE: (384, 600)
-  FORMAT: "RGB"
+#INPUT:
+#  MIN_SIZE_TRAIN: (480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800)
+#  CROP:
+#    ENABLED: False
+#    TYPE: "absolute_range"
+#    SIZE: (384, 600)
+#  FORMAT: "RGB"
 TEST:
   EVAL_PERIOD: 2 #7330
 DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: False
-  NUM_WORKERS: 4
+  NUM_WORKERS: 1
 VERSION: 2

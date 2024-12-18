@@ -273,16 +273,20 @@ def setup(args):
 
 
 def main(args):
+    
+    print(args.resume)
     cfg = setup(args)
+    
+    print(cfg)
 
     if args.eval_only:
         model = Trainer.build_model(cfg)
         kwargs = may_get_ema_checkpointer(cfg, model)
         if cfg.MODEL_EMA.ENABLED:
-            EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(cfg.MODEL.WEIGHTS,
+            EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(cfg.OUTPUT_DIR, #cfg.MODEL.WEIGHTS,
                                                                                               resume=args.resume)
         else:
-            DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(cfg.MODEL.WEIGHTS,
+            DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(cfg.OUTPUT_DIR, #cfg.MODEL.WEIGHTS,
                                                                                            resume=args.resume)
         res = Trainer.ema_test(cfg, model)
         if cfg.TEST.AUG.ENABLED:
@@ -298,6 +302,7 @@ def main(args):
 
 if __name__ == "__main__":
     args = default_argument_parser().parse_args()
+    #args.resume = False ########################################################## MODIFIED
     print("Command Line Args:", args)
     launch(
         main,

@@ -1,4 +1,10 @@
 _BASE_: "Base-DiffusionDet.yaml"
+MODEL:
+  BACKBONE:
+    NAME:  "build_ASTModel_backbone_fpn"
+  AST:
+    PRETRAINED_MODEL: "MIT/ast-finetuned-audioset-10-10-0.448-v2"
+  EMA_ENABLED: False
 DATASETS:
   TRAIN: ("ami_train",)
   # EVAL: ("ami_val",)

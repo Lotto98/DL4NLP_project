@@ -62,8 +62,10 @@ def add_diffusiondet_config(cfg):
     
     # AST
     cfg.MODEL.AST = CN()
-    cfg.MODEL.AST.OUT_CHANNELS = 768
-    cfg.MODEL.AST.OUT_FEATURES = ("AST_0", "AST_3", "AST_6", "AST_9")
+    cfg.MODEL.AST.OUT_CHANNELS = 0
+    cfg.MODEL.AST.OUT_FEATURES = []
+    cfg.MODEL.AST.PRETRAINED_MODEL = ""
+    cfg.MODEL.EMA_ENABLED=False
 
     # Optimizer.
     cfg.SOLVER.OPTIMIZER = "ADAMW"

@@ -88,10 +88,21 @@ class DiffusionDetAudioDataset(IterableDataset):
         if name == "ami":
             self.annotations_per_audio = self.load_ami(split)
             
+            """
             self.feature_extractor = ASTFeatureExtractor(
                 sampling_rate=cfg.INPUT.SAMPLING_RATE,
                 max_length=cfg.INPUT.SECONDS_PER_SEGMENT * cfg.INPUT.SAMPLING_RATE,
             )
+            """
+            
+            self.feature_extractor = ASTFeatureExtractor.from_pretrained(cfg.MODEL.AST.PRETRAINED_MODEL)
+            
+            # Modifica il tasso di campionamento e la lunghezza massima
+            self.feature_extractor.sampling_rate = cfg.INPUT.SAMPLING_RATE
+            self.feature_extractor.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * cfg.INPUT.SAMPLING_RATE
+            
+            print(self.feature_extractor.sampling_rate)
+            print(self.feature_extractor.max_length)
             
             self.sample_rate = self.feature_extractor.sampling_rate
             self.seconds_per_segment = cfg.INPUT.SECONDS_PER_SEGMENT

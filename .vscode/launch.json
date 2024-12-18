@@ -43,6 +43,7 @@
     {
       "type": "debugpy",
       "request": "launch",
+      "justMyCode": false,
       "name": "Launch train_net.py",
       "program": "${workspaceFolder}/train_net.py",
       "args": [
