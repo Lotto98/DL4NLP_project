@@ -119,6 +119,9 @@ class Trainer(DefaultTrainer):
         #return build_detection_train_loader(cfg, mapper=mapper)
         
         dataset = DiffusionDetAudioDataset(name="ami", split="train", cfg=cfg)
+    
+        for i in dataset:
+            pass
         
         return build_batch_data_loader(dataset,
                 total_batch_size=cfg.INPUT.TOT_BATCH_SIZE,
