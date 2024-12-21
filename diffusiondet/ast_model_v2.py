@@ -15,7 +15,7 @@ class ASTBackboneMultiScale(Backbone):
         """
         super().__init__()
         self.ast_model = ast_model
-        self.out_channels = 1  # AST layers
+        self.out_channels = 768  # AST layers
         self.out_features = out_features
         self.num_layers = ast_model.config.num_hidden_layers  # AST layers
         
@@ -28,34 +28,52 @@ class ASTBackboneMultiScale(Backbone):
         Returns:
             A dictionary of multi-scale feature maps.
         """
-        print(x.shape)
+        #print(x.shape)
         
         B, W, H = x.shape
         
+        W_hidden = ((W - 16) // 10) + 1
+        H_hidden = 12
+        
         # Forward pass through the AST model
-        outputs = self.ast_model(x, output_hidden_states=True)
+        outputs = self.ast_model(x, output_hidden_states=True, )
         hidden_states = outputs.hidden_states  # All transformer block outputs
         
         # Define multi-scale outputs (res2, res3, res4, res5)
         feature_maps = {}
         layers = [3, 6, 9, 12]
         scale = 1
+        divisibility = 8
         for layer_index in layers:
             
-            feature_maps[f"AST_{layer_index}"] = hidden_states[layer_index]#.permute(0, 2, 1)
-            B, L, C = feature_maps[f"AST_{layer_index}"].shape
+            layer_output =  hidden_states[layer_index]
+            B, L, C = layer_output.shape # B, 100*time, 768
             
-            # padding to make H and W even
-            if L % scale != 0 or C % scale != 0:
-                feature_maps[f"AST_{layer_index}"] = F.pad(feature_maps[f"AST_{layer_index}"], (0, C % scale, 0, L % scale))
+            #get first two tokens
+            tokens = layer_output[:, :2, :]
+            
+            #remove first two tokens
+            layer_output = layer_output[:, 2:, :]
+            layer_output = layer_output.transpose(1, 2)
+            layer_output = layer_output.view(B, C, H_hidden, W_hidden)
+            
+            
+            #padding layer output such that H and W are divisible by scale
+            if (H_hidden % divisibility != 0 or W_hidden % divisibility != 0):
+                layer_output = F.pad(layer_output, (0, (divisibility - W_hidden % divisibility), 0, (divisibility - H_hidden % divisibility)))
 
-            # average pooling
-            feature_maps[f"AST_{layer_index}"] = F.avg_pool2d(
-                feature_maps[f"AST_{layer_index}"], kernel_size=scale, stride=scale,
-            )#.permute(0, 2, 1)
+            #pad to the next power of 2
+            #if scale == 1:
+            #    new_H_hidden = 2**int(H_hidden.bit_length())
+            #    new_W_hidden = 2**int(W_hidden.bit_length())
+            #    layer_output = F.pad(layer_output, (0, new_W_hidden - layer_output.shape[3], 0, new_H_hidden - layer_output.shape[2]))
             
-            # Reshape to (B, C, H, W)
-            feature_maps[f"AST_{layer_index}"] = feature_maps[f"AST_{layer_index}"].unsqueeze_(1).permute(0, 1, 3, 2)
+            # average pooling
+            layer_output = F.avg_pool2d(
+                layer_output, kernel_size=1, stride=scale,
+            )
+            
+            feature_maps[f"AST_{layer_index}"] = layer_output
             
             scale *= 2
             
@@ -71,10 +89,11 @@ class ASTBackboneMultiScale(Backbone):
                 x1 = x[:, 1::scale, 0::scale]  # B H/2 W/2
                 x2 = x[:, 0::scale, 1::scale]  # B H/2 W/2
                 x3 = x[:, 1::scale, 1::scale]  # B H/2 W/2
-                x = torch.cat([x0, x1, x2, x3], -1)  
-                
-                
+                x = torch.cat([x0, x1, x2, x3], -1)
             """
+        
+        #for key in feature_maps:
+            #print(key, feature_maps[key].shape)
         
         return feature_maps
 
@@ -96,7 +115,7 @@ def build_ASTModel_backbone(cfg, input_shape: ShapeSpec):
     print(config.hidden_size)
         
     # Modifica la lunghezza massima
-    config.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * cfg.INPUT.SAMPLING_RATE
+    config.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 #cfg.INPUT.SAMPLING_RATE
     
     model = ASTModel.from_pretrained(
         cfg.MODEL.AST.PRETRAINED_MODEL, 
@@ -116,7 +135,7 @@ def build_ASTModel_backbone_fpn(cfg, input_shape: ShapeSpec):
     """
     bottom_up = build_ASTModel_backbone(cfg, input_shape)
     in_features = cfg.MODEL.FPN.IN_FEATURES
-    out_channels = 1 #cfg.MODEL.FPN.OUT_CHANNELS
+    out_channels = cfg.MODEL.FPN.OUT_CHANNELS
     print(in_features, out_channels)
     backbone = FPN(
         bottom_up=bottom_up,

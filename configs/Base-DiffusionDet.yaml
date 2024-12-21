@@ -1,9 +1,9 @@
 MODEL:
-  DEVICE: "cpu"
+  DEVICE: "cuda"
   META_ARCHITECTURE: "DiffusionDet"
   AST:
-    OUT_FEATURES: ["AST_3", "AST_3", "AST_4", "AST_5"]
-    OUT_CHANNELS: 1 #768
+    OUT_FEATURES: ["AST_3", "AST_6", "AST_9", "AST_12"]
+    OUT_CHANNELS: 768
   FPN:
     IN_FEATURES: ["AST_3", "AST_6", "AST_9", "AST_12"] #["simple1", "simple2", "simple3", "simple4"]
     OUT_CHANNELS: 256
@@ -37,7 +37,7 @@ SEED: 40244023
 #    SIZE: (384, 600)
 #  FORMAT: "RGB"
 TEST:
-  EVAL_PERIOD: 2 #7330
+  EVAL_PERIOD: 7330
 DATALOADER:
   FILTER_EMPTY_ANNOTATIONS: False
   NUM_WORKERS: 1

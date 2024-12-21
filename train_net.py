@@ -52,6 +52,8 @@ class Trainer(DefaultTrainer):
             setup_logger()
         cfg = DefaultTrainer.auto_scale_workers(cfg, comm.get_world_size())
         
+        self.register_test_dataset("ami_test", DiffusionDetAudioDataset(name="ami", split="test", cfg=cfg))
+        
         # Assume these objects must be constructed in this order.
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
@@ -81,6 +83,15 @@ class Trainer(DefaultTrainer):
         self.cfg = cfg
 
         self.register_hooks(self.build_hooks())
+        
+    @classmethod
+    def register_test_dataset(cls, dataset_name, dataset):
+        """
+        Register a dataset on detectron2 to be used in test time.
+        """
+        from detectron2.data import DatasetCatalog
+        DatasetCatalog.register(dataset_name, lambda: [e for e in dataset])
+        
 
     @classmethod
     def build_model(cls, cfg):
@@ -115,13 +126,8 @@ class Trainer(DefaultTrainer):
 
     @classmethod
     def build_train_loader(cls, cfg):
-        #mapper = DiffusionDetDatasetMapper(cfg, is_train=True)
-        #return build_detection_train_loader(cfg, mapper=mapper)
         
         dataset = DiffusionDetAudioDataset(name="ami", split="train", cfg=cfg)
-    
-        for i in dataset:
-            pass
         
         return build_batch_data_loader(dataset,
                 total_batch_size=cfg.INPUT.TOT_BATCH_SIZE,
