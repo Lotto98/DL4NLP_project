@@ -176,7 +176,7 @@ class DynamicHead(nn.Module):
 class RCNNHead(nn.Module):
 
     def __init__(self, cfg, d_model, num_classes, dim_feedforward=2048, nhead=8, dropout=0.1, activation="relu",
-                 scale_clamp: float = _DEFAULT_SCALE_CLAMP, bbox_weights=(2.0, 1.0)): # was (2.0, 2.0, 1.0, 1.0)
+                 scale_clamp: float = _DEFAULT_SCALE_CLAMP, bbox_weights=(2.0, 2.0, 1.0, 1.0)): # was (2.0, 2.0, 1.0, 1.0)
         super().__init__()
 
         self.d_model = d_model
@@ -303,7 +303,7 @@ class RCNNHead(nn.Module):
         ctr_x = boxes[:, 0] + 0.5 * widths
         #ctr_y = boxes[:, 1] + 0.5 * heights
 
-        wx, ww = self.bbox_weights #wx, wy, ww, wh = self.bbox_weights
+        wx, wy, ww, wh = self.bbox_weights
         dx = deltas[:, 0::2] / wx #dx = deltas[:, 0::4] / wx 
         #dy = deltas[:, 1::4] / wy
         dw = deltas[:, 1::2] / ww #dw = deltas[:, 2::4] / ww

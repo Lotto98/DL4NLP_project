@@ -304,13 +304,13 @@ class DiffusionDet(nn.Module):
                 Other information that's included in the original dicts, such as:
 
                 * "height", "width" (int): the output resolution of the model, used in inference.
-                  See :meth:`postprocess` for details.
+                See :meth:`postprocess` for details.
         """
         images, images_whwh = self.preprocess_image(batched_inputs)
         if isinstance(images, (list, torch.Tensor)):
             images = nested_tensor_from_tensor_list(images)
             
-        self.image_height = images_whwh[0][1].item()
+        self.image_height = images_whwh[0][0].item()
 
         # Feature Extraction.
         src = self.backbone(images.tensor)
