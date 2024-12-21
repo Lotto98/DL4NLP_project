@@ -15,6 +15,8 @@ from detectron2.data import DatasetCatalog, MetadataCatalog
 import os
 from torch.utils.data import IterableDataset
 
+from sklearn.preprocessing import LabelEncoder
+
 class DiffusionDetAudioDataset(IterableDataset):
 
     def load_ami(self, split = "train"):
@@ -37,18 +39,20 @@ class DiffusionDetAudioDataset(IterableDataset):
     def segments_generator(self, idx_audio):
         # Copy dataset_dict to avoid modifying the original one
         audio_dict = self.annotations_per_audio[idx_audio].copy()
-
+        
         # split also the time pair if it falls between two or more segments
         new_annotations = []
         new_labels = []
         new_segments = []
         for (start_time, end_time), speaker_id in zip(audio_dict["time_pairs"], audio_dict["speaker_id"]):
+            # print("ORIGINAL",start_time, end_time, speaker_id)
             starting_segment = int(start_time // self.seconds_per_segment)
             ending_segment = int(end_time // self.seconds_per_segment)
             for segment_index in range(starting_segment, ending_segment + 1):
+                segment_start_time = segment_index * self.seconds_per_segment
+
                 if segment_index == starting_segment:
                     # rescale start time to the segment
-                    segment_start_time = segment_index * self.seconds_per_segment
                     new_start_time = start_time - segment_start_time
                 else:
                     new_start_time = 0 # segment_index * self.seconds_per_segment
@@ -56,13 +60,14 @@ class DiffusionDetAudioDataset(IterableDataset):
                 if segment_index == ending_segment:
                     new_end_time = end_time - segment_start_time
                 else:
-                    new_end_time = self.seconds_per_segment - 1 # (segment_index + 1) * self.seconds_per_segment
+                    new_end_time = self.seconds_per_segment - 0.1 # (segment_index + 1) * self.seconds_per_segment
                 
-                new_annotations.append([new_start_time*100, new_end_time*100])
+                new_annotations.append([new_start_time*100, new_end_time*100]) # * 100 to convert in correct scale for spectogram
                 new_labels.append(speaker_id)
                 new_segments.append(segment_index)
         
         new_items = {}
+        unique_labels = set()
         for new_annotation, new_label, new_segment in zip(new_annotations, new_labels, new_segments):
             if new_segment not in new_items:  
                 new_items[new_segment] = {
@@ -75,19 +80,25 @@ class DiffusionDetAudioDataset(IterableDataset):
 
             new_items[new_segment]["time_pairs"].append(new_annotation)
             new_items[new_segment]["speaker_ids"].append(new_label)
+            
+            unique_labels.add(new_label)
         
         #self.plot_spectrogram(audio_dict)
         
-        return new_items
+        return new_items, unique_labels
     
     def audio_generator(self):
         new_id = 0
         self.all_segments = {}
+        all_labels = set()
         for idx_audio in range(len(self.annotations_per_audio)):
-            segments = self.segments_generator(idx_audio)
+            segments, unique_labels = self.segments_generator(idx_audio)
+            all_labels.update(unique_labels)
             for _, v in segments.items():
                 self.all_segments[new_id] = v
                 new_id += 1
+        
+        self.label_encoder.fit(list(all_labels))
     
     def __init__(self, cfg, name="ami", split="train"):
         
@@ -106,7 +117,6 @@ class DiffusionDetAudioDataset(IterableDataset):
             # Modifica il tasso di campionamento e la lunghezza massima
             self.feature_extractor.sampling_rate = cfg.INPUT.SAMPLING_RATE
             self.feature_extractor.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 #* cfg.INPUT.SAMPLING_RATE
-            self.feature_extractor.num_mel_bins = 5
             
             print(self.feature_extractor.sampling_rate)
             print(self.feature_extractor.max_length)
@@ -114,67 +124,29 @@ class DiffusionDetAudioDataset(IterableDataset):
             self.sample_rate = self.feature_extractor.sampling_rate
             self.seconds_per_segment = cfg.INPUT.SECONDS_PER_SEGMENT
             
-            self.audio_generator()
-
-    @staticmethod
-    def plot(spectrogram: np.ndarray, time_pairs: list, speaker_ids: list):
-        
-        print(spectrogram.shape)
-        
-        plt.matshow(spectrogram)
-        
-        for (start_time, end_time), speaker_id in zip(time_pairs, speaker_ids):
-            #plt.axvline(x=start_time, color="red", linestyle="--", label=speaker_id)
-            #plt.axvline(x=end_time, color="red", linestyle="--", label=speaker_id)
-            pass
-        #plt.legend()
-        plt.show()  
-    
-    def plot_spectrogram(self, spectrogram, 
-                        time_pairs, speaker_ids,
-                         title="Mel-Spectrogram"):
-        """
-        Plots a precomputed spectrogram.
-
-        Args:
-            spectrogram (ndarray): 2D array of the spectrogram (frequency x time).
-            sample_rate (int): Sampling rate of the original audio.
-            title (str): Title of the plot.
-        """
-        """
-        
-        print(audio_dict["file_name"])
-        
-        # Load the audio file
-        audio_path = audio_dict["file_name"]
-        waveform, sr = torchaudio.load(audio_path)
-
-        # Resample if needed
-        if sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
-            waveform = resampler(waveform)
-        
-        self.feature_extractor.max_length = 7200
-        
-        # Update the segment with the audio feature
-        spectrogram =  self.feature_extractor(
-            waveform.squeeze(0).numpy(), 
-            return_tensors="pt", 
-            sampling_rate=self.sample_rate
+            self.label_encoder = LabelEncoder()
             
-        )["input_values"]
-        """
+            self.audio_generator()
+            
+            print("number of classes", len(self.label_encoder.classes_))
+            
+    @staticmethod
+    def plot_spectrogram(spectrogram, 
+                        time_pairs, speaker_ids,
+                        sample_rate,
+                         title="Mel-Spectrogram"):
+        
         # Define the time and frequency axes
         num_time_frames = spectrogram.shape[1]
         num_frequency_bins = spectrogram.shape[0]
 
         # Time axis (seconds)
-        time = np.linspace(0, num_time_frames / self.sample_rate, num_time_frames)
+        time = np.linspace(0, num_time_frames / sample_rate, num_time_frames)
 
         # Frequency axis (Hz)
-        frequency = np.linspace(0, self.sample_rate / 2, num_frequency_bins)
+        frequency = np.linspace(0, sample_rate / 2, num_frequency_bins)
 
-        print(spectrogram.shape, spectrogram.max(), spectrogram.min())
+        #print(spectrogram.shape, spectrogram.max(), spectrogram.min())
         
         # Plot the spectrogram
         plt.figure(figsize=(10, 6))
@@ -186,53 +158,34 @@ class DiffusionDetAudioDataset(IterableDataset):
         #plt.ylabel("Frequency (Hz)")
         # Define a color map for speaker IDs
         unique_speaker_ids = list(set(speaker_ids))
-        print(len(unique_speaker_ids))
+        #print(len(unique_speaker_ids))
         color_palette = plt.cm.get_cmap("spring", len(unique_speaker_ids))
         color_map = {speaker_id: color_palette(i) for i, speaker_id in enumerate(unique_speaker_ids)}
         speakers_already=[]
         for (start_time, end_time), speaker_id in zip(time_pairs, speaker_ids):
             print(start_time, end_time, speaker_id)
             color = color_map.get(speaker_id, 'black')  # Default color is black if speaker_id not in color_map
+            
             if speaker_id not in speakers_already:
-                plt.axvline(x=start_time, color=color, linestyle="-", label=speaker_id)
                 speakers_already.append(speaker_id)
-            else:
-                plt.axvline(x=start_time, color=color, linestyle="-")
                 
-            plt.axvline(x=end_time, color=color, linestyle="-")
-            #plt.axvspan(start_time, end_time, color=color, alpha=0.3)
+                # add label on legend
+                plt.plot([], [], color=color, label=speaker_id)
+                
+            y_pos = 5 + (speakers_already.index(speaker_id) * 5) # add 5 to separate the speakers
+            
+            # add double arrow to indicate the speaker
+            plt.annotate("", xy=(start_time, y_pos), xytext=(end_time, y_pos),
+                         arrowprops=dict(arrowstyle="<->", color=color))
+            
+            # add speaker id on the top of the arrow
+            # plt.text((start_time + end_time) / 2, y_pos + 0.1, speaker_id, ha='center', va='bottom', color=color)
         
-        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.05), ncol=3)
+        plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3)
+        plt.xlabel("Time (cs)")
+        plt.ylabel("Mel-spectrogram bins")
         plt.tight_layout()
-        plt.show()
-
-    # Load the audio file
-    @staticmethod
-    def get_min_max_frequencies(spectrogram, sample_rate, threshold=0):
-        """
-        Extract the minimum and maximum frequencies from a spectrogram.
-
-        Args:
-            spectrogram (ndarray): The spectrogram (magnitude or power) of the audio.
-            sample_rate (int): The sampling rate of the original audio.
-            threshold (float): Energy threshold to identify active frequencies.
-        
-        Returns:
-            min_freq (float): Minimum frequency with significant energy.
-            max_freq (float): Maximum frequency with significant energy.
-        """
-        # Compute the frequency axis for the spectrogram
-        num_freq_bins = spectrogram.shape[0]
-        frequencies = np.linspace(0, sample_rate / 2, num_freq_bins)
-
-        # Find frequency bins with energy above the threshold
-        active_bins = np.any(spectrogram > threshold, axis=1)
-
-        # Extract minimum and maximum frequencies
-        min_freq = frequencies[active_bins].min() if np.any(active_bins) else 0
-        max_freq = frequencies[active_bins].max() if np.any(active_bins) else sample_rate / 2
-
-        return min_freq, max_freq
+        plt.show() #.savefig("figure.png") #.show()
         
     def __getitem__(self, idx_segment: int):
         # Load the audio file
@@ -257,19 +210,16 @@ class DiffusionDetAudioDataset(IterableDataset):
             sampling_rate=self.sample_rate
         )["input_values"]})
         
-        self.plot_spectrogram(self.all_segments[idx_segment]["segment"].squeeze(0), 
-                              self.all_segments[idx_segment]["time_pairs"], self.all_segments[idx_segment]["speaker_ids"])
-        
-                  #self.all_segments[idx_segment]["time_pairs"],
-                 # self.all_segments[idx_segment]["speaker_ids"])
-        #torch.save(waveform_segments[self.all_segments[idx_segment]["segment_id"]].squeeze(0), f"datasets/ami/{idx_segment}.wav")
+        #self.plot_spectrogram(self.all_segments[idx_segment]["segment"].squeeze(0), 
+        #                      self.all_segments[idx_segment]["time_pairs"], self.all_segments[idx_segment]["speaker_ids"],
+        #                      self.sample_rate)
         
         return {
             "image": self.all_segments[idx_segment]["segment"].squeeze(0),
             "instances": Instances(
                 image_size = self.all_segments[idx_segment]["segment"].shape[-2:],
                 gt_boxes=Boxes(torch.tensor([[st, 0, et, self.all_segments[idx_segment]["segment"].shape[-1]] for st, et in self.all_segments[idx_segment]["time_pairs"]])),
-                gt_classes=torch.zeros(len(self.all_segments[idx_segment]["speaker_ids"])) #self.all_segments[idx_segment]["speaker_ids"]
+                gt_classes = torch.as_tensor(self.label_encoder.transform(self.all_segments[idx_segment]["speaker_ids"]))
             )
         }
     
@@ -288,13 +238,3 @@ class DiffusionDetAudioDataset(IterableDataset):
         for idx in range(iter_start, iter_end):
             yield self.__getitem__(idx)
             
-    
-if __name__ == "__main__":
-    dataset = DiffusionDetAudioDataset()
-    
-    for i in dataset:
-        pass
-    """
-    dataset = DiffusionDetAudioDataset()
-    dataset.__iter__()
-    """
