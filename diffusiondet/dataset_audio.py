@@ -11,7 +11,7 @@ from detectron2.data import transforms as T
 from transformers import ASTFeatureExtractor
 from xml.etree import ElementTree as ET
 from detectron2.structures import Instances, Boxes
-from detectron2.data import DatasetCatalog, MetadataCatalog
+from detectron2.evaluation import DatasetEvaluator
 import os
 from torch.utils.data import IterableDataset
 
@@ -45,6 +45,9 @@ class DiffusionDetAudioDataset(IterableDataset):
         new_labels = []
         new_segments = []
         for (start_time, end_time), speaker_id in zip(audio_dict["time_pairs"], audio_dict["speaker_id"]):
+            if abs(start_time - end_time) < 0.5:
+                continue
+            
             # print("ORIGINAL",start_time, end_time, speaker_id)
             starting_segment = int(start_time // self.seconds_per_segment)
             ending_segment = int(end_time // self.seconds_per_segment)
@@ -60,7 +63,12 @@ class DiffusionDetAudioDataset(IterableDataset):
                 if segment_index == ending_segment:
                     new_end_time = end_time - segment_start_time
                 else:
-                    new_end_time = self.seconds_per_segment - 0.1 # (segment_index + 1) * self.seconds_per_segment
+                    new_end_time = self.seconds_per_segment # (segment_index + 1) * self.seconds_per_segment
+                
+                if abs(new_start_time - new_end_time) < 0.5:
+                    continue
+                
+                assert new_start_time < new_end_time, f"start time {new_start_time} must be less than end time {new_end_time}"
                 
                 new_annotations.append([new_start_time*100, new_end_time*100]) # * 100 to convert in correct scale for spectogram
                 new_labels.append(speaker_id)
@@ -68,6 +76,7 @@ class DiffusionDetAudioDataset(IterableDataset):
         
         new_items = {}
         unique_labels = set()
+        max_boxes = 0
         for new_annotation, new_label, new_segment in zip(new_annotations, new_labels, new_segments):
             if new_segment not in new_items:  
                 new_items[new_segment] = {
@@ -82,18 +91,21 @@ class DiffusionDetAudioDataset(IterableDataset):
             new_items[new_segment]["speaker_ids"].append(new_label)
             
             unique_labels.add(new_label)
+            max_boxes = max(max_boxes, len(new_items[new_segment]["time_pairs"]))
         
         #self.plot_spectrogram(audio_dict)
         
-        return new_items, unique_labels
+        return new_items, unique_labels, max_boxes
     
     def audio_generator(self):
         new_id = 0
         self.all_segments = {}
         all_labels = set()
+        self.max_boxes = 0
         for idx_audio in range(len(self.annotations_per_audio)):
-            segments, unique_labels = self.segments_generator(idx_audio)
+            segments, unique_labels, max_boxes_segment = self.segments_generator(idx_audio)
             all_labels.update(unique_labels)
+            self.max_boxes = max(self.max_boxes, max_boxes_segment)
             for _, v in segments.items():
                 self.all_segments[new_id] = v
                 new_id += 1
@@ -129,6 +141,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             self.audio_generator()
             
             print("number of classes", len(self.label_encoder.classes_))
+            print("max boxes per segment", self.max_boxes)
             
     @staticmethod
     def plot_spectrogram(spectrogram, 
@@ -218,7 +231,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             "image": self.all_segments[idx_segment]["segment"].squeeze(0),
             "instances": Instances(
                 image_size = self.all_segments[idx_segment]["segment"].shape[-2:],
-                gt_boxes=Boxes(torch.tensor([[st, 0, et, self.all_segments[idx_segment]["segment"].shape[-1]] for st, et in self.all_segments[idx_segment]["time_pairs"]])),
+                gt_boxes = Boxes(torch.tensor([[st, 0, et, self.all_segments[idx_segment]["segment"].shape[-1]] for st, et in self.all_segments[idx_segment]["time_pairs"]])),
                 gt_classes = torch.as_tensor(self.label_encoder.transform(self.all_segments[idx_segment]["speaker_ids"]))
             )
         }
@@ -237,4 +250,16 @@ class DiffusionDetAudioDataset(IterableDataset):
     
         for idx in range(iter_start, iter_end):
             yield self.__getitem__(idx)
-            
+
+class AudioEvaluator(DatasetEvaluator):
+    def __init__(self, name, cfg, output_dir):
+        super().__init__()
+    
+    def reset(self):
+        pass
+    
+    def process(self, inputs, outputs):
+        pass
+    
+    def evaluate(self):
+        pass

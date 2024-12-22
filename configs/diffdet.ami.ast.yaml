@@ -5,8 +5,8 @@ MODEL:
   AST:
     PRETRAINED_MODEL: "MIT/ast-finetuned-audioset-10-10-0.448-v2"
   DiffusionDet:
-    NUM_PROPOSALS: 10
     HIDDEN_DIM: 256
+    NUM_PROPOSALS: 30
     NUM_CLASSES: 155
   EMA_ENABLED: False
 DATASETS:

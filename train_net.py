@@ -33,7 +33,7 @@ from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.modeling import build_model
 
 from diffusiondet import DiffusionDetDatasetMapper, add_diffusiondet_config, DiffusionDetWithTTA
-from diffusiondet.dataset_audio import DiffusionDetAudioDataset
+from diffusiondet.dataset_audio import DiffusionDetAudioDataset, AudioEvaluator
 from diffusiondet.util.model_ema import add_model_ema_configs, may_build_model_ema, may_get_ema_checkpointer, EMAHook, \
     apply_model_ema_and_restore, EMADetectionCheckpointer
 
@@ -119,10 +119,15 @@ class Trainer(DefaultTrainer):
         """
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
+        
+        return AudioEvaluator(dataset_name, cfg, True, output_folder)
+        
+        
         if 'lvis' in dataset_name:
             return LVISEvaluator(dataset_name, cfg, True, output_folder)
         else:
             return COCOEvaluator(dataset_name, cfg, True, output_folder)
+        
 
     @classmethod
     def build_train_loader(cls, cfg):
@@ -143,6 +148,7 @@ class Trainer(DefaultTrainer):
         params: List[Dict[str, Any]] = []
         memo: Set[torch.nn.parameter.Parameter] = set()
         for key, value in model.named_parameters(recurse=True):
+            #print(key, value.requires_grad)
             if not value.requires_grad:
                 continue
             # Avoid duplicating parameters
@@ -286,16 +292,20 @@ def main(args):
     print(args.resume)
     cfg = setup(args)
     
-    print(cfg)
+    #print(cfg)
 
     if args.eval_only:
         model = Trainer.build_model(cfg)
         kwargs = may_get_ema_checkpointer(cfg, model)
+        
+        model_path = os.path.join(cfg.OUTPUT_DIR, "model_0000019.pth")
+        Trainer.register_test_dataset("ami_test", DiffusionDetAudioDataset(name="ami", split="test", cfg=cfg))
+        
         if cfg.MODEL_EMA.ENABLED:
-            EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(cfg.OUTPUT_DIR, #cfg.MODEL.WEIGHTS,
+            EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(model_path, #cfg.MODEL.WEIGHTS,
                                                                                               resume=args.resume)
         else:
-            DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(cfg.OUTPUT_DIR, #cfg.MODEL.WEIGHTS,
+            DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(model_path, #cfg.MODEL.WEIGHTS,
                                                                                            resume=args.resume)
         res = Trainer.ema_test(cfg, model)
         if cfg.TEST.AUG.ENABLED:
