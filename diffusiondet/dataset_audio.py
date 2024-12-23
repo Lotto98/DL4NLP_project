@@ -203,7 +203,9 @@ class DiffusionDetAudioDataset(IterableDataset):
     def __getitem__(self, idx_segment: int):
         # Load the audio file
         audio_path = self.all_segments[idx_segment]["audio_file"]
-        waveform, sr = torchaudio.load(audio_path)
+        f = open(audio_path, 'rb')
+        waveform, sr = torchaudio.load(f)
+        f.close()
 
         # Resample if needed
         if sr != self.sample_rate:
