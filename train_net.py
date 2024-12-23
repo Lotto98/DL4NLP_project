@@ -134,6 +134,13 @@ class Trainer(DefaultTrainer):
         
         dataset = DiffusionDetAudioDataset(name="ami", split="train", cfg=cfg)
         
+        print(dataset[len(dataset)-1]["image"].shape)
+        
+        from tqdm import tqdm 
+        
+        for i, a in tqdm(enumerate(dataset), total=len(dataset)):
+            assert a["image"].shape == (3000, 128), f"{a["image"].shape}, {i}"
+        
         return build_batch_data_loader(dataset,
                 total_batch_size=cfg.INPUT.TOT_BATCH_SIZE,
                 num_workers=cfg.INPUT.NUM_WORKERS,

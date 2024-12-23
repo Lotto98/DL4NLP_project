@@ -44,6 +44,7 @@ class ASTBackboneMultiScale(Backbone):
         Returns:
             A dictionary of multi-scale feature maps.
         """
+        assert x.shape == (1, 3000, 128), x.shape
         
         # Forward pass through the AST model
         outputs = self.ast_model(x, output_hidden_states=True, )

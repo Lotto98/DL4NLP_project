@@ -213,7 +213,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             waveform = resampler(waveform)
         
         # split the audio in segments of x-seconds
-        segment_length = self.seconds_per_segment * self.sample_rate
+        segment_length = self.seconds_per_segment * self.sample_rate #check this
         waveform_segments = waveform.split(segment_length, dim=1)
         
         #torchaudio.save("datasets/ami/prova.wav", waveform_segments[self.all_segments[idx_segment]["segment_id"]], self.sample_rate)
@@ -252,6 +252,9 @@ class DiffusionDetAudioDataset(IterableDataset):
     
         for idx in range(iter_start, iter_end):
             yield self.__getitem__(idx)
+            
+    def __len__(self):
+        return len(self.all_segments)
 
 class AudioEvaluator(DatasetEvaluator):
     def __init__(self, name, cfg, output_dir):
