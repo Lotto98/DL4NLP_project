@@ -1,3 +1,4 @@
+import pickle
 from datasets import load_dataset, Dataset
 import os
 import wget
@@ -6,6 +7,8 @@ import json
 
 import argparse
 import pandas as pd
+
+from sklearn.preprocessing import LabelEncoder
 
 def create_annotations_ami(split:str="train"):
     
@@ -37,6 +40,8 @@ def create_annotations_ami(split:str="train"):
         # Convert the train dataset to a pandas DataFrame
         df = dataset.to_pandas()[["meeting_id","speaker_id","begin_time", "end_time"]]
         
+        #print(df[df["speaker_id"] == "MEE071"])
+        
         #print(sorted(df["speaker_id"].unique())) 
 
         df = df.sort_values(by=["meeting_id", "begin_time", "end_time"])        
@@ -62,27 +67,16 @@ def create_annotations_ami(split:str="train"):
     ds = load_dataset("edinburghcstr/ami", "ihm", split=split)
     ds_dict, meeting_ids = get_time_pairs_from_dataset(ds)
     
-    """
-    annotations = []
-    
-    for meeting in ds_dict:
-        meeting_id = meeting["meeting_id"]
-        time_pairs = meeting["time_pairs"]
-        speaker_ids = meeting["speaker_id"]
-        for time_pair, speaker_id in zip(time_pairs, speaker_ids):
-            annotations.append({
-                "file_name": meeting_id,
-                "time_pair": time_pair,
-                "speaker_id": speaker_id
-            })
-    """
-    
     os.makedirs("datasets/ami/annotations", exist_ok=True)
+    
+    speaker_ids = set()
+    for meeting in ds_dict:
+        speaker_ids.update(meeting["speaker_id"])
     
     with open(f'datasets/ami/annotations/{split}.json', 'w') as fp:
         json.dump(ds_dict, fp)
     
-    return meeting_ids
+    return meeting_ids, speaker_ids
 
 def create_audio_ami(meeting_ids: list, split:str="train"):
     
@@ -110,14 +104,29 @@ if __name__ == "__main__":
     args = argparser.parse_args()
     
     if args.split == "all":
-        meeting_ids = create_annotations_ami("train")
+        meeting_ids, unique_speakers_ids_train = create_annotations_ami("train")
         create_audio_ami(meeting_ids, "train")
         
-        meeting_ids = create_annotations_ami("validation")
+        meeting_ids, unique_speakers_ids_validation = create_annotations_ami("validation")
         create_audio_ami(meeting_ids, "validation")
         
-        meeting_ids = create_annotations_ami("test")
+        meeting_ids, unique_speakers_ids_test = create_annotations_ami("test")
         create_audio_ami(meeting_ids, "test")
+        
+        unique_ids = list(unique_speakers_ids_train | unique_speakers_ids_test)
+        
+        print()
+        
+        print(len(unique_speakers_ids_train))
+        #print(len(unique_speakers_ids_validation))
+        print(len(unique_speakers_ids_test))
+        
+        print(len(unique_ids))
+        
+        encoder = LabelEncoder().fit(unique_ids)
+        
+        with open("datasets/ami/classes.pkl", 'wb') as f:
+            pickle.dump(encoder, f)
     else:
         meeting_ids = create_annotations_ami(args.split)
         create_audio_ami(meeting_ids, args.split)

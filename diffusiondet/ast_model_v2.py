@@ -33,7 +33,7 @@ class ASTBackboneMultiScale(Backbone):
         self.proj = torch.nn.ModuleList([
                             torch.nn.Sequential(*[
                                 torch.nn.AvgPool2d(kernel_size=1, stride=scale, padding=0),
-                                torch.nn.GroupNorm(1, self.out_channels),
+                                #torch.nn.GroupNorm(1, self.out_channels),
                                 ]) for scale in self.scales
                             ])
 

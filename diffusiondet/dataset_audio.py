@@ -1,6 +1,7 @@
 import copy
 import json
 import logging
+import pickle
 import numpy as np
 import torch
 import torchaudio
@@ -47,7 +48,8 @@ class DiffusionDetAudioDataset(IterableDataset):
         new_labels = []
         new_segments = []
         for (start_time, end_time), speaker_id in zip(audio_dict["time_pairs"], audio_dict["speaker_id"]):
-            if abs(start_time - end_time) < 0.5:
+            if abs(start_time - end_time) < 0.001:
+                #print("skipping", start_time, end_time, speaker_id)
                 continue
             
             # print("ORIGINAL",start_time, end_time, speaker_id)
@@ -67,7 +69,8 @@ class DiffusionDetAudioDataset(IterableDataset):
                 else:
                     new_end_time = self.seconds_per_segment # (segment_index + 1) * self.seconds_per_segment
                 
-                if abs(new_start_time - new_end_time) < 0.5:
+                if abs(new_start_time - new_end_time) < 0.001:
+                    #print("skipping", new_start_time, new_end_time, speaker_id)
                     continue
                 
                 assert new_start_time < new_end_time, f"start time {new_start_time} must be less than end time {new_end_time}"
@@ -138,12 +141,16 @@ class DiffusionDetAudioDataset(IterableDataset):
             for _, v in segments.items():
                 self.all_segments[new_id] = v
                 new_id += 1
-                
+        
+        """
         if self.fit_label_encoder:
-            self.label_encoder.fit(list(all_labels))
-            np.save('datasets/ami/classes.npy', self.label_encoder.classes_)
+            self.label_encoder = self.label_encoder.fit(list(all_labels))
+            with open("datasets/ami/classes.pkl", "wb") as f:
+                pickle.dump(self.label_encoder, f)
         else:
-            self.label_encoder.classes_ = np.load('datasets/ami/classes.npy')
+            with open("datasets/ami/classes.pkl", "rb") as f:
+                self.label_encoder = pickle.load(f)
+        """
     
     def __init__(self, cfg, name:str="ami", split:str="train", label_encoder: LabelEncoder | None = None):
         
@@ -159,8 +166,8 @@ class DiffusionDetAudioDataset(IterableDataset):
             self.sample_rate = self.feature_extractor.sampling_rate
             self.seconds_per_segment = cfg.INPUT.SECONDS_PER_SEGMENT
             
-            self.label_encoder = LabelEncoder()
-            self.fit_label_encoder = (split == "train")
+            #self.label_encoder = LabelEncoder()
+            #self.fit_label_encoder = (split == "train")
                 
             self.audio_waveform_segments = {}
             
@@ -170,7 +177,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             
             print("- sampling rate:", self.feature_extractor.sampling_rate)
             print("- max length:", self.feature_extractor.max_length)
-            print("- number of classes", len(self.label_encoder.classes_))
+            #print("- number of classes", len(self.label_encoder.classes_))
             print("- max boxes per segment", self.max_boxes)
             
             
@@ -246,12 +253,20 @@ class DiffusionDetAudioDataset(IterableDataset):
         #                      self.all_segments[idx_segment]["time_pairs"], self.all_segments[idx_segment]["speaker_ids"],
         #                      self.sample_rate)
         
+        #print(idx_segment)
+        
         return {
             "image": features.squeeze(0),
             "instances": Instances(
                 image_size = features.shape[-2:],
                 gt_boxes = Boxes(torch.tensor([[st, 0, et, features.shape[-1]] for st, et in self.all_segments[idx_segment]["time_pairs"]])),
-                gt_classes = torch.as_tensor(self.label_encoder.transform(self.all_segments[idx_segment]["speaker_ids"]))
+                gt_classes = torch.as_tensor(
+                                    [
+                                        0 if speaker_id[0] == 'M' else 1
+                                        for speaker_id in self.all_segments[idx_segment]["speaker_ids"]
+                                    ]
+                                    #self.label_encoder.transform(self.all_segments[idx_segment]["speaker_ids"])
+                                    )
             )
         }
     
@@ -282,6 +297,10 @@ class AudioEvaluator(DatasetEvaluator):
         pass
     
     def process(self, inputs, outputs):
+        
+        for input, output in zip(inputs, outputs):
+            print(input)
+            print(output)
         pass
     
     def evaluate(self):
