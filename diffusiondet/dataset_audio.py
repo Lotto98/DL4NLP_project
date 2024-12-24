@@ -266,10 +266,11 @@ class DiffusionDetAudioDataset(IterableDataset):
             worker_id = worker_info.id
             iter_start = worker_id * per_worker
             iter_end = min(iter_start + per_worker, len(self.all_segments))
-    
-        for idx in range(iter_start, iter_end):
-            yield self.__getitem__(idx)
-            
+
+        while True:
+            for idx in range(iter_start, iter_end):
+                yield self.__getitem__(idx)
+                
     def __len__(self):
         return len(self.all_segments)
 

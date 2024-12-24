@@ -33,7 +33,7 @@ class ASTBackboneMultiScale(Backbone):
         self.proj = torch.nn.ModuleList([
                             torch.nn.Sequential(*[
                                 torch.nn.AvgPool2d(kernel_size=1, stride=scale, padding=0),
-                                #torch.nn.GroupNorm(1, self.out_channels),
+                                torch.nn.GroupNorm(1, self.out_channels),
                                 ]) for scale in self.scales
                             ])
 
@@ -44,7 +44,7 @@ class ASTBackboneMultiScale(Backbone):
         Returns:
             A dictionary of multi-scale feature maps.
         """
-        assert x.shape == (1, 3000, 128), x.shape
+        assert x.shape == (x.shape[0], 3000, 128), x.shape
         
         # Forward pass through the AST model
         outputs = self.ast_model(x, output_hidden_states=True, )
