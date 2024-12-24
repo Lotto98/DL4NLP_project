@@ -52,12 +52,12 @@ class Trainer(DefaultTrainer):
             setup_logger()
         cfg = DefaultTrainer.auto_scale_workers(cfg, comm.get_world_size())
         
-        self.register_test_dataset("ami_test", DiffusionDetAudioDataset(name="ami", split="test", cfg=cfg))
-        
         # Assume these objects must be constructed in this order.
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
         data_loader = self.build_train_loader(cfg)
+        
+        self.register_test_dataset("ami_test", DiffusionDetAudioDataset(name="ami", split="test", cfg=cfg))
 
         model = create_ddp_model(model, broadcast_buffers=False)
         self._trainer = (AMPTrainer if cfg.SOLVER.AMP.ENABLED else SimpleTrainer)(
@@ -134,12 +134,10 @@ class Trainer(DefaultTrainer):
         
         dataset = DiffusionDetAudioDataset(name="ami", split="train", cfg=cfg)
         
-        print(dataset[len(dataset)-1]["image"].shape)
+        #from tqdm import tqdm 
         
-        from tqdm import tqdm 
-        
-        for i, a in tqdm(enumerate(dataset), total=len(dataset)):
-            assert a["image"].shape == (3000, 128), f"{a["image"].shape}, {i}"
+        #for i, a in tqdm(enumerate(dataset), total=len(dataset)):
+        #    assert a["image"].shape == (3000, 128), f"{a["image"].shape}, {i}"
         
         return build_batch_data_loader(dataset,
                 total_batch_size=cfg.INPUT.TOT_BATCH_SIZE,

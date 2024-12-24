@@ -17,6 +17,8 @@ from torch.utils.data import IterableDataset
 
 from sklearn.preprocessing import LabelEncoder
 
+from tqdm import trange
+
 class DiffusionDetAudioDataset(IterableDataset):
 
     def load_ami(self, split = "train"):
@@ -32,7 +34,7 @@ class DiffusionDetAudioDataset(IterableDataset):
         
         for annotation in annotations:
             file_name = annotation["meeting_id"]
-            annotation["file_name"] = os.path.join(audio_root, f"{file_name}.wav")    
+            annotation["file_name"] = os.path.join(audio_root, f"{file_name}.wav")
     
         return annotations
     
@@ -93,7 +95,30 @@ class DiffusionDetAudioDataset(IterableDataset):
             unique_labels.add(new_label)
             max_boxes = max(max_boxes, len(new_items[new_segment]["time_pairs"]))
         
-        #self.plot_spectrogram(audio_dict)
+        # Load the audio file if it has not been loaded yet
+        if audio_dict["file_name"] not in self.audio_waveform_segments:
+            
+            # Load the audio file
+            audio_path = audio_dict["file_name"]
+            f = open(audio_path, 'rb')
+            waveform, sr = torchaudio.load(f)
+            f.close()
+
+            # Check if the audio is stereo (2 channels)
+            if waveform.shape[0] > 1:
+                # Convert to mono by averaging the two channels
+                waveform = waveform.mean(dim=0, keepdim=True)
+            
+            # Resample if needed
+            if sr != self.sample_rate:
+                resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
+                waveform = resampler(waveform)
+            
+            # split the audio in segments of x-seconds
+            segment_length = self.seconds_per_segment * self.sample_rate #check this
+            waveform_segments = waveform.split(segment_length, dim=1)
+            
+            self.audio_waveform_segments[audio_dict["file_name"]] = waveform_segments
         
         return new_items, unique_labels, max_boxes
     
@@ -102,27 +127,28 @@ class DiffusionDetAudioDataset(IterableDataset):
         self.all_segments = {}
         all_labels = set()
         self.max_boxes = 0
-        for idx_audio in range(len(self.annotations_per_audio)):
+        
+        for idx_audio in trange(len(self.annotations_per_audio), leave=False):
+            
             segments, unique_labels, max_boxes_segment = self.segments_generator(idx_audio)
+            
             all_labels.update(unique_labels)
             self.max_boxes = max(self.max_boxes, max_boxes_segment)
+            
             for _, v in segments.items():
                 self.all_segments[new_id] = v
                 new_id += 1
-        
-        self.label_encoder.fit(list(all_labels))
+                
+        if self.fit_label_encoder:
+            self.label_encoder.fit(list(all_labels))
+            np.save('datasets/ami/classes.npy', self.label_encoder.classes_)
+        else:
+            self.label_encoder.classes_ = np.load('datasets/ami/classes.npy')
     
-    def __init__(self, cfg, name="ami", split="train"):
+    def __init__(self, cfg, name:str="ami", split:str="train", label_encoder: LabelEncoder | None = None):
         
         if name == "ami":
             self.annotations_per_audio = self.load_ami(split)
-            
-            """
-            self.feature_extractor = ASTFeatureExtractor(
-                sampling_rate=cfg.INPUT.SAMPLING_RATE,
-                max_length=cfg.INPUT.SECONDS_PER_SEGMENT * cfg.INPUT.SAMPLING_RATE,
-            )
-            """
             
             self.feature_extractor = ASTFeatureExtractor.from_pretrained(cfg.MODEL.AST.PRETRAINED_MODEL)
             
@@ -130,18 +156,23 @@ class DiffusionDetAudioDataset(IterableDataset):
             self.feature_extractor.sampling_rate = cfg.INPUT.SAMPLING_RATE
             self.feature_extractor.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 #* cfg.INPUT.SAMPLING_RATE
             
-            print(self.feature_extractor.sampling_rate)
-            print(self.feature_extractor.max_length)
-            
             self.sample_rate = self.feature_extractor.sampling_rate
             self.seconds_per_segment = cfg.INPUT.SECONDS_PER_SEGMENT
             
             self.label_encoder = LabelEncoder()
+            self.fit_label_encoder = (split == "train")
+                
+            self.audio_waveform_segments = {}
+            
+            print(f"####################### LOADING DATASET {name} WITH SPLIT {split} #######################")
             
             self.audio_generator()
             
-            print("number of classes", len(self.label_encoder.classes_))
-            print("max boxes per segment", self.max_boxes)
+            print("- sampling rate:", self.feature_extractor.sampling_rate)
+            print("- max length:", self.feature_extractor.max_length)
+            print("- number of classes", len(self.label_encoder.classes_))
+            print("- max boxes per segment", self.max_boxes)
+            
             
     @staticmethod
     def plot_spectrogram(spectrogram, 
@@ -201,39 +232,25 @@ class DiffusionDetAudioDataset(IterableDataset):
         plt.show() #.savefig("figure.png") #.show()
         
     def __getitem__(self, idx_segment: int):
-        # Load the audio file
-        audio_path = self.all_segments[idx_segment]["audio_file"]
-        f = open(audio_path, 'rb')
-        waveform, sr = torchaudio.load(f)
-        f.close()
-
-        # Resample if needed
-        if sr != self.sample_rate:
-            resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
-            waveform = resampler(waveform)
         
-        # split the audio in segments of x-seconds
-        segment_length = self.seconds_per_segment * self.sample_rate #check this
-        waveform_segments = waveform.split(segment_length, dim=1)
-        
-        #torchaudio.save("datasets/ami/prova.wav", waveform_segments[self.all_segments[idx_segment]["segment_id"]], self.sample_rate)
+        waveform_segments = self.audio_waveform_segments[self.all_segments[idx_segment]["audio_file"]]
         
         # Update the segment with the audio feature
-        self.all_segments[idx_segment].update({"segment": self.feature_extractor(
+        features = self.feature_extractor(
             waveform_segments[self.all_segments[idx_segment]["segment_id"]].squeeze(0).numpy(), 
             return_tensors="pt", 
             sampling_rate=self.sample_rate
-        )["input_values"]})
+        )["input_values"]
         
         #self.plot_spectrogram(self.all_segments[idx_segment]["segment"].squeeze(0), 
         #                      self.all_segments[idx_segment]["time_pairs"], self.all_segments[idx_segment]["speaker_ids"],
         #                      self.sample_rate)
         
         return {
-            "image": self.all_segments[idx_segment]["segment"].squeeze(0),
+            "image": features.squeeze(0),
             "instances": Instances(
-                image_size = self.all_segments[idx_segment]["segment"].shape[-2:],
-                gt_boxes = Boxes(torch.tensor([[st, 0, et, self.all_segments[idx_segment]["segment"].shape[-1]] for st, et in self.all_segments[idx_segment]["time_pairs"]])),
+                image_size = features.shape[-2:],
+                gt_boxes = Boxes(torch.tensor([[st, 0, et, features.shape[-1]] for st, et in self.all_segments[idx_segment]["time_pairs"]])),
                 gt_classes = torch.as_tensor(self.label_encoder.transform(self.all_segments[idx_segment]["speaker_ids"]))
             )
         }
