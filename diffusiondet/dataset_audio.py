@@ -79,6 +79,12 @@ class DiffusionDetAudioDataset(IterableDataset):
                 new_labels.append(speaker_id)
                 new_segments.append(segment_index)
         
+        
+        
+        
+        
+        
+        
         new_items = {}
         unique_labels = set()
         max_boxes = 0
@@ -141,7 +147,6 @@ class DiffusionDetAudioDataset(IterableDataset):
             for _, v in segments.items():
                 self.all_segments[new_id] = v
                 new_id += 1
-        
         """
         if self.fit_label_encoder:
             self.label_encoder = self.label_encoder.fit(list(all_labels))
@@ -249,11 +254,30 @@ class DiffusionDetAudioDataset(IterableDataset):
             sampling_rate=self.sample_rate
         )["input_values"]
         
-        #self.plot_spectrogram(self.all_segments[idx_segment]["segment"].squeeze(0), 
-        #                      self.all_segments[idx_segment]["time_pairs"], self.all_segments[idx_segment]["speaker_ids"],
-        #                      self.sample_rate)
+        time_pairs_with_silence = []
+        classes=[] #0 for silence, 1 for speaker
         
-        #print(idx_segment)
+        # TODO: muovere sopra
+        current_time = 0
+        ending_time = self.seconds_per_segment
+        for st, et in self.all_segments[idx_segment]["time_pairs"]:
+            if st - current_time > 0.001:
+                time_pairs_with_silence.append([current_time, st])
+                classes.append(0)
+                current_time += st
+            else:
+                time_pairs_with_silence.append([st, et])
+                classes.append(1)
+                if et > current_time:
+                    current_time += et
+                    
+        self.plot_spectrogram(
+            features, 
+            time_pairs_with_silence, 
+            classes, 
+            self.sample_rate, 
+            title=f"Mel-Spectrogram for segment {idx_segment}"
+        )
         
         return {
             "image": features.squeeze(0),

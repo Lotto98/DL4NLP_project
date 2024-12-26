@@ -69,7 +69,8 @@ def add_diffusiondet_config(cfg):
 
     # Optimizer.
     cfg.SOLVER.OPTIMIZER = "ADAMW"
-    cfg.SOLVER.BACKBONE_MULTIPLIER = 1.0
+    cfg.SOLVER.BACKBONE_MULTIPLIER_FPN = 1.0
+    cfg.SOLVER.BACKBONE_MULTIPLIER_AST = 1.0
     
     #INPUT
     cfg.INPUT.SAMPLING_RATE = 100

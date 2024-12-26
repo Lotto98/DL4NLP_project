@@ -163,7 +163,13 @@ class Trainer(DefaultTrainer):
             lr = cfg.SOLVER.BASE_LR
             weight_decay = cfg.SOLVER.WEIGHT_DECAY
             if "backbone" in key:
-                lr = lr * cfg.SOLVER.BACKBONE_MULTIPLIER
+                if "fpn" in key:
+                    lr = lr * cfg.SOLVER.BACKBONE_MULTIPLIER_FPN
+                elif "bottom_up" in key:
+                    lr = lr * cfg.SOLVER.BACKBONE_MULTIPLIER_AST
+                    #print("lr bottom_up", lr)
+                else:
+                    raise NotImplementedError(f"no backbone type {key}")
             params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
 
         def maybe_add_full_model_gradient_clipping(optim):  # optim: the optimizer class

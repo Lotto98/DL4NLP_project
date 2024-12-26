@@ -15,7 +15,7 @@ MODEL:
     POOLER_SAMPLING_RATIO: 2
 SOLVER:
   CHECKPOINT_PERIOD: 900
-  IMS_PER_BATCH: 1
+  #IMS_PER_BATCH: 1
   BASE_LR: 0.000025
   STEPS: (210000, 250000)
   MAX_ITER: 270000
@@ -23,7 +23,8 @@ SOLVER:
   WARMUP_ITERS: 1000
   WEIGHT_DECAY: 0.0001
   OPTIMIZER: "ADAMW"
-  BACKBONE_MULTIPLIER: 1.0  # keep same with BASE_LR.
+  BACKBONE_MULTIPLIER_FPN: 1.0    # keep same with BASE_LR.
+  BACKBONE_MULTIPLIER_AST: 0.5  # AST is pretrained, so use smaller lr. How much smaller is a hyperparameter.
   CLIP_GRADIENTS:
     ENABLED: True
     CLIP_TYPE: "full_model"

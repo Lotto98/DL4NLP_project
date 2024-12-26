@@ -40,11 +40,11 @@ class ASTBackboneMultiScale(Backbone):
     def forward(self, x):
         """
         Args:
-            x: Input tensor of shape (batch_size, W, H).
+            x: Input tensor of shape (batch_size, T*100, num bin).
         Returns:
             A dictionary of multi-scale feature maps.
         """
-        assert x.shape == (x.shape[0], 3000, 128), x.shape
+        #assert x.shape == (x.shape[0], 3000, 128), x.shape
         
         # Forward pass through the AST model
         outputs = self.ast_model(x, output_hidden_states=True, )
@@ -55,7 +55,7 @@ class ASTBackboneMultiScale(Backbone):
         for i, layer_index in enumerate(self.layers):
             
             layer_output =  hidden_states[layer_index]
-            B, L, C = layer_output.shape # B, 100*time, 768
+            B, L, C = layer_output.shape # B, L, 768
             
             #get first two tokens
             #tokens = layer_output[:, :2, :]
