@@ -8,6 +8,7 @@ MODEL:
     HIDDEN_DIM: 256
     NUM_PROPOSALS: 20
     NUM_CLASSES: 2
+    SAMPLE_STEP: 3
   EMA_ENABLED: False
 DATASETS:
   TRAIN: ("ami_train",)

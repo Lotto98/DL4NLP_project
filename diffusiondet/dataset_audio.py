@@ -97,7 +97,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             if new_segment not in new_items:  
                 # if there are missing segments, add noise
                 if prev_segment != -1 and new_segment - prev_segment > 1:
-                    for missing_segment in range(prev_segment, new_segment):
+                    for missing_segment in range(prev_segment + 1, new_segment):
                         new_items[missing_segment] = {
                             "segment_id": missing_segment, # self.feature_extractor(waveform_segments[missing_segment].squeeze(0).numpy(), return_tensors="pt", sampling_rate=self.sample_rate)["input_values"],
                             "segment": None,
@@ -109,10 +109,10 @@ class DiffusionDetAudioDataset(IterableDataset):
                         current_times[missing_segment] = self.seconds_per_segment * 100
                         
                 # add noise at the end of prev segment if needed
-                if prev_segment != -1 and current_times[new_segment - 1] < (self.seconds_per_segment * 100) - 0.001:
-                    new_items[new_segment - 1]["time_pairs"].append([current_times[new_segment - 1], self.seconds_per_segment * 100])
-                    new_items[new_segment - 1]["speaker_ids"].append(0)
-                    current_times[new_segment - 1] = self.seconds_per_segment * 100
+                if prev_segment != -1 and current_times[prev_segment] < (self.seconds_per_segment * 100) - 0.001:
+                    new_items[prev_segment]["time_pairs"].append([current_times[prev_segment], self.seconds_per_segment * 100])
+                    new_items[prev_segment]["speaker_ids"].append(0)
+                    current_times[prev_segment] = self.seconds_per_segment * 100
                 
                 current_times[new_segment] = 0
                 new_items[new_segment] = {
@@ -208,7 +208,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             self.seconds_per_segment = cfg.INPUT.SECONDS_PER_SEGMENT
             
             #self.label_encoder = LabelEncoder()
-            #self.fit_label_encoder = (split == "train")
+            self.is_training = (split == "train")
                 
             self.audio_waveform_segments = {}
             
@@ -290,37 +290,14 @@ class DiffusionDetAudioDataset(IterableDataset):
             sampling_rate=self.sample_rate
         )["input_values"]
         
-        """time_pairs_with_silence = []
-        classes=[] #0 for silence, 1 for speaker
         
-        # TODO: muovere sopra
-        current_time = 0
-        for st, et in self.all_segments[idx_segment]["time_pairs"]:
-            if st - current_time > 0.001:
-                time_pairs_with_silence.append([current_time, st])
-                classes.append(0)
-                current_time += st
-            else:
-                time_pairs_with_silence.append([st, et])
-                classes.append(1)
-                if et > current_time:
-                    curtime_pairs_with_silencerent_time += et
-                    
-        self.plot_spectrogram(
-            features, 
-            time_pairs_with_silence, 
-            classes, 
-            self.sample_rate, 
-            title=f"Mel-Spectrogram for segment {idx_segment}"
-        )"""
-        
-        self.plot_spectrogram(
-            features, 
-            self.all_segments[idx_segment]["time_pairs"], 
-            self.all_segments[idx_segment]["speaker_ids"], 
-            self.sample_rate, 
-            title=f"Mel-Spectrogram for segment {idx_segment}"
-        )
+        #self.plot_spectrogram(
+        #    features, 
+        #    self.all_segments[idx_segment]["time_pairs"], 
+        #    self.all_segments[idx_segment]["speaker_ids"], 
+        #    self.sample_rate, 
+        #    title=f"Mel-Spectrogram for segment {idx_segment}"
+        #)
         
         return {
             "image": features.squeeze(0),
@@ -352,6 +329,8 @@ class DiffusionDetAudioDataset(IterableDataset):
         while True:
             for idx in range(iter_start, iter_end):
                 yield self.__getitem__(idx)
+            if not self.is_training:
+                break
                 
     def __len__(self):
         return len(self.all_segments)

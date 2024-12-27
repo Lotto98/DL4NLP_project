@@ -36,6 +36,8 @@ from diffusiondet import DiffusionDetDatasetMapper, add_diffusiondet_config, Dif
 from diffusiondet.dataset_audio import DiffusionDetAudioDataset, AudioEvaluator
 from diffusiondet.util.model_ema import add_model_ema_configs, may_build_model_ema, may_get_ema_checkpointer, EMAHook, \
     apply_model_ema_and_restore, EMADetectionCheckpointer
+    
+from tqdm import tqdm
 
 
 class Trainer(DefaultTrainer):
@@ -56,8 +58,6 @@ class Trainer(DefaultTrainer):
         model = self.build_model(cfg)
         optimizer = self.build_optimizer(cfg, model)
         data_loader = self.build_train_loader(cfg)
-        
-        self.register_test_dataset("ami_test", DiffusionDetAudioDataset(name="ami", split="test", cfg=cfg))
 
         model = create_ddp_model(model, broadcast_buffers=False)
         self._trainer = (AMPTrainer if cfg.SOLVER.AMP.ENABLED else SimpleTrainer)(
@@ -83,15 +83,6 @@ class Trainer(DefaultTrainer):
         self.cfg = cfg
 
         self.register_hooks(self.build_hooks())
-        
-    @classmethod
-    def register_test_dataset(cls, dataset_name, dataset):
-        """
-        Register a dataset on detectron2 to be used in test time.
-        """
-        from detectron2.data import DatasetCatalog
-        DatasetCatalog.register(dataset_name, lambda: [e for e in dataset])
-        
 
     @classmethod
     def build_model(cls, cfg):
@@ -120,7 +111,7 @@ class Trainer(DefaultTrainer):
         if output_folder is None:
             output_folder = os.path.join(cfg.OUTPUT_DIR, "inference")
         
-        return AudioEvaluator(dataset_name, cfg, True, output_folder)
+        return AudioEvaluator(dataset_name, cfg, output_folder)
         
         
         if 'lvis' in dataset_name:
@@ -142,6 +133,24 @@ class Trainer(DefaultTrainer):
         return build_batch_data_loader(dataset,
                 total_batch_size=cfg.INPUT.TOT_BATCH_SIZE,
                 num_workers=cfg.INPUT.NUM_WORKERS,
+                pin_memory=True,
+                drop_last=False,
+                sampler=None
+            )
+        
+    @classmethod
+    def build_test_loader(cls, cfg, dataset_name):
+        
+        dataset = DiffusionDetAudioDataset(name="ami", split="test", cfg=cfg)
+        
+        #from tqdm import tqdm 
+        
+        #for i, a in tqdm(enumerate(dataset), total=len(dataset)):
+        #    assert a["image"].shape == (3000, 128), f"{a["image"].shape}, {i}"
+        
+        return build_batch_data_loader(dataset,
+                total_batch_size=1,
+                num_workers=1,
                 pin_memory=True,
                 drop_last=False,
                 sampler=None
