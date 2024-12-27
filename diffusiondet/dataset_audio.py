@@ -41,7 +41,7 @@ class DiffusionDetAudioDataset(IterableDataset):
     
     def segments_generator(self, idx_audio):
         # Copy dataset_dict to avoid modifying the original one
-        audio_dict = self.annotations_per_audio[idx_audio].copy()
+        audio_dict = self.annotations_per_audio[idx_audio].copy()                    
         
         # split also the time pair if it falls between two or more segments
         new_annotations = []
@@ -78,18 +78,43 @@ class DiffusionDetAudioDataset(IterableDataset):
                 new_annotations.append([new_start_time*100, new_end_time*100]) # * 100 to convert in correct scale for spectogram
                 new_labels.append(speaker_id)
                 new_segments.append(segment_index)
-        
-        
-        
-        
-        
-        
-        
+                
+        # sort arrays
+        combined = list(zip(new_segments, new_annotations, new_labels))
+        combined.sort(key=lambda x: (x[0], x[1][0]))  # Ordina per segment_index
+
+        new_segments, new_annotations, new_labels = zip(*combined)
+        new_segments = list(new_segments)
+        new_annotations = list(new_annotations)
+        new_labels = list(new_labels)
+                
+        current_times = {}  
         new_items = {}
         unique_labels = set()
         max_boxes = 0
+        prev_segment = -1
         for new_annotation, new_label, new_segment in zip(new_annotations, new_labels, new_segments):
             if new_segment not in new_items:  
+                # if there are missing segments, add noise
+                if prev_segment != -1 and new_segment - prev_segment > 1:
+                    for missing_segment in range(prev_segment, new_segment):
+                        new_items[missing_segment] = {
+                            "segment_id": missing_segment, # self.feature_extractor(waveform_segments[missing_segment].squeeze(0).numpy(), return_tensors="pt", sampling_rate=self.sample_rate)["input_values"],
+                            "segment": None,
+                            "time_pairs": [[0, self.seconds_per_segment * 100]],
+                            "speaker_ids": [0],
+                            "audio_file": audio_dict["file_name"]
+                        }
+                        
+                        current_times[missing_segment] = self.seconds_per_segment * 100
+                        
+                # add noise at the end of prev segment if needed
+                if prev_segment != -1 and current_times[new_segment - 1] < (self.seconds_per_segment * 100) - 0.001:
+                    new_items[new_segment - 1]["time_pairs"].append([current_times[new_segment - 1], self.seconds_per_segment * 100])
+                    new_items[new_segment - 1]["speaker_ids"].append(0)
+                    current_times[new_segment - 1] = self.seconds_per_segment * 100
+                
+                current_times[new_segment] = 0
                 new_items[new_segment] = {
                     "segment_id": new_segment, # self.feature_extractor(waveform_segments[new_segment].squeeze(0).numpy(), return_tensors="pt", sampling_rate=self.sample_rate)["input_values"],
                     "segment": None,
@@ -97,12 +122,23 @@ class DiffusionDetAudioDataset(IterableDataset):
                     "speaker_ids": [],
                     "audio_file": audio_dict["file_name"]
                 }
+                
+            # transform to two classes noise (0) and silence (1)
+            st, et = new_annotation
+            if st - current_times[new_segment] > 0.001:
+                new_items[new_segment]["time_pairs"].append([current_times[new_segment], st])
+                new_items[new_segment]["speaker_ids"].append(0)
+            
+            if et > current_times[new_segment]:
+                current_times[new_segment] = et
 
             new_items[new_segment]["time_pairs"].append(new_annotation)
-            new_items[new_segment]["speaker_ids"].append(new_label)
+            new_items[new_segment]["speaker_ids"].append(1) # new_label forced to 1 = speach
             
             unique_labels.add(new_label)
             max_boxes = max(max_boxes, len(new_items[new_segment]["time_pairs"]))
+            
+            prev_segment = new_segment
         
         # Load the audio file if it has not been loaded yet
         if audio_dict["file_name"] not in self.audio_waveform_segments:
@@ -254,12 +290,11 @@ class DiffusionDetAudioDataset(IterableDataset):
             sampling_rate=self.sample_rate
         )["input_values"]
         
-        time_pairs_with_silence = []
+        """time_pairs_with_silence = []
         classes=[] #0 for silence, 1 for speaker
         
         # TODO: muovere sopra
         current_time = 0
-        ending_time = self.seconds_per_segment
         for st, et in self.all_segments[idx_segment]["time_pairs"]:
             if st - current_time > 0.001:
                 time_pairs_with_silence.append([current_time, st])
@@ -269,12 +304,20 @@ class DiffusionDetAudioDataset(IterableDataset):
                 time_pairs_with_silence.append([st, et])
                 classes.append(1)
                 if et > current_time:
-                    current_time += et
+                    curtime_pairs_with_silencerent_time += et
                     
         self.plot_spectrogram(
             features, 
             time_pairs_with_silence, 
             classes, 
+            self.sample_rate, 
+            title=f"Mel-Spectrogram for segment {idx_segment}"
+        )"""
+        
+        self.plot_spectrogram(
+            features, 
+            self.all_segments[idx_segment]["time_pairs"], 
+            self.all_segments[idx_segment]["speaker_ids"], 
             self.sample_rate, 
             title=f"Mel-Spectrogram for segment {idx_segment}"
         )
@@ -286,11 +329,11 @@ class DiffusionDetAudioDataset(IterableDataset):
                 gt_boxes = Boxes(torch.tensor([[st, 0, et, features.shape[-1]] for st, et in self.all_segments[idx_segment]["time_pairs"]])),
                 gt_classes = torch.as_tensor(
                                     [
-                                        0 if speaker_id[0] == 'M' else 1
+                                        speaker_id
                                         for speaker_id in self.all_segments[idx_segment]["speaker_ids"]
                                     ]
                                     #self.label_encoder.transform(self.all_segments[idx_segment]["speaker_ids"])
-                                    )
+                )
             )
         }
     
