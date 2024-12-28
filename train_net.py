@@ -125,10 +125,6 @@ class Trainer(DefaultTrainer):
         
         dataset = DiffusionDetAudioDataset(name="ami", split="train", cfg=cfg)
         
-        #from tqdm import tqdm 
-        
-        #for i, a in tqdm(enumerate(dataset), total=len(dataset)):
-        #    assert a["image"].shape == (3000, 128), f"{a["image"].shape}, {i}"
         
         return build_batch_data_loader(dataset,
                 total_batch_size=cfg.INPUT.TOT_BATCH_SIZE,
@@ -318,8 +314,7 @@ def main(args):
         model = Trainer.build_model(cfg)
         kwargs = may_get_ema_checkpointer(cfg, model)
         
-        model_path = os.path.join(cfg.OUTPUT_DIR, "model_0000019.pth")
-        Trainer.register_test_dataset("ami_test", DiffusionDetAudioDataset(name="ami", split="test", cfg=cfg))
+        model_path = os.path.join(cfg.OUTPUT_DIR, "model_0018899.pth")
         
         if cfg.MODEL_EMA.ENABLED:
             EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(model_path, #cfg.MODEL.WEIGHTS,

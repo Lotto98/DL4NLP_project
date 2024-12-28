@@ -21,7 +21,7 @@ def box_xyxy_to_cxcywh(x):
 
 def __constant_box(x, min_value, max_value):
     x0, y0, x1, y1 = x.unbind(-1)
-    return torch.stack([x0, torch.zeros_like(x0)+min_value, x1, torch.zeros_like(x0)+max_value], dim=-1)
+    return torch.stack([torch.zeros_like(y0)+min_value, y0, torch.zeros_like(y1)+max_value, y1], dim=-1)
 
 def constant_box_xyxy(x_xyxy, min_value_xyxy, max_value_xyxy):
     return __constant_box(x_xyxy, min_value_xyxy, max_value_xyxy)

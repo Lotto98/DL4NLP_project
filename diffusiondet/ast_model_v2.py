@@ -24,8 +24,8 @@ class ASTBackboneMultiScale(Backbone):
         self.scales = [1, 2, 4, 8]
         self.divisibility = self.scales[-1]
         
-        W = self.ast_model.config.max_length
-        H = self.ast_model.config.num_mel_bins
+        W = self.ast_model.config.num_mel_bins
+        H = self.ast_model.config.max_length
         
         self.W_hidden = ((W - 16) // 10) + 1
         self.H_hidden = ((H - 16) // 10) + 1
@@ -33,7 +33,7 @@ class ASTBackboneMultiScale(Backbone):
         self.proj = torch.nn.ModuleList([
                             torch.nn.Sequential(*[
                                 torch.nn.AvgPool2d(kernel_size=1, stride=scale, padding=0),
-                                #torch.nn.GroupNorm(1, self.out_channels),
+                                torch.nn.GroupNorm(1, self.out_channels),
                                 ]) for scale in self.scales
                             ])
 

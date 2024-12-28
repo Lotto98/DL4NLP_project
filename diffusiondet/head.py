@@ -298,31 +298,31 @@ class RCNNHead(nn.Module):
         """
         boxes = boxes.to(deltas.dtype)
 
-        widths = boxes[:, 2] - boxes[:, 0]
-        #heights = boxes[:, 3] - boxes[:, 1] #
-        ctr_x = boxes[:, 0] + 0.5 * widths
-        #ctr_y = boxes[:, 1] + 0.5 * heights
+        #widths = boxes[:, 2] - boxes[:, 0]
+        heights = boxes[:, 3] - boxes[:, 1] #
+        #ctr_x = boxes[:, 0] + 0.5 * widths
+        ctr_y = boxes[:, 1] + 0.5 * heights
 
         wx, wy, ww, wh = self.bbox_weights
-        dx = deltas[:, 0::2] / wx #dx = deltas[:, 0::4] / wx 
-        #dy = deltas[:, 1::4] / wy
-        dw = deltas[:, 1::2] / ww #dw = deltas[:, 2::4] / ww
-        #dh = deltas[:, 3::4] / wh
+        #dx = deltas[:, 0::2] / wx #dx = deltas[:, 0::4] / wx 
+        dy = deltas[:, 0::2] / wy
+        #dw = deltas[:, 1::2] / ww #dw = deltas[:, 2::4] / ww
+        dh = deltas[:, 1::2] / wh
 
         # Prevent sending too large values into torch.exp()
-        dw = torch.clamp(dw, max=self.scale_clamp)
-        #dh = torch.clamp(dh, max=self.scale_clamp)
+        #dw = torch.clamp(dw, max=self.scale_clamp)
+        dh = torch.clamp(dh, max=self.scale_clamp)
 
-        pred_ctr_x = dx * widths[:, None] + ctr_x[:, None]
-        #pred_ctr_y = dy * heights[:, None] + ctr_y[:, None]
-        pred_w = torch.exp(dw) * widths[:, None]
-        #pred_h = torch.exp(dh) * heights[:, None]
+        #pred_ctr_x = dx * widths[:, None] + ctr_x[:, None]
+        pred_ctr_y = dy * heights[:, None] + ctr_y[:, None]
+        #pred_w = torch.exp(dw) * widths[:, None]
+        pred_h = torch.exp(dh) * heights[:, None]
 
         pred_boxes = torch.zeros(deltas.shape[0], 4, device=deltas.device, dtype=deltas.dtype)
-        pred_boxes[:, 0::4] = pred_ctr_x - 0.5 * pred_w  # x1
-        pred_boxes[:, 1::4] = 0 #pred_ctr_y - 0.5 * pred_h  # y1
-        pred_boxes[:, 2::4] = pred_ctr_x + 0.5 * pred_w  # x2
-        pred_boxes[:, 3::4] = image_height #pred_ctr_y + 0.5 * pred_h  # y2
+        pred_boxes[:, 0::4] = 0 #pred_ctr_x - 0.5 * pred_w  # x1
+        pred_boxes[:, 1::4] = pred_ctr_y - 0.5 * pred_h  # y1
+        pred_boxes[:, 2::4] = image_height #pred_ctr_x + 0.5 * pred_w  # x2
+        pred_boxes[:, 3::4] = pred_ctr_y + 0.5 * pred_h  # y2
 
         return pred_boxes
 

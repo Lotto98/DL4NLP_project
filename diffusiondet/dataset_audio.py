@@ -41,7 +41,11 @@ class DiffusionDetAudioDataset(IterableDataset):
     
     def segments_generator(self, idx_audio):
         # Copy dataset_dict to avoid modifying the original one
-        audio_dict = self.annotations_per_audio[idx_audio].copy()                    
+        audio_dict = self.annotations_per_audio[idx_audio].copy()       
+        
+        # Load the audio file
+        waveform_segments = self.load_audio(audio_dict["file_name"])
+        self.audio_waveform_segments[audio_dict["file_name"]] = waveform_segments
         
         # split also the time pair if it falls between two or more segments
         new_annotations = []
@@ -55,6 +59,16 @@ class DiffusionDetAudioDataset(IterableDataset):
             # print("ORIGINAL",start_time, end_time, speaker_id)
             starting_segment = int(start_time // self.seconds_per_segment)
             ending_segment = int(end_time // self.seconds_per_segment)
+            
+            if starting_segment > len(waveform_segments) - 1:
+                print("WARNING: start time is greater than the audio length for audio", audio_dict["file_name"])
+                continue
+            
+            if (ending_segment > len(waveform_segments) - 1):
+                ending_segment = len(waveform_segments) - 1
+                end_time = len(waveform_segments) * self.seconds_per_segment
+                print("WARNING: end time is greater than the audio length for audio", audio_dict["file_name"])
+            
             for segment_index in range(starting_segment, ending_segment + 1):
                 segment_start_time = segment_index * self.seconds_per_segment
 
@@ -90,7 +104,6 @@ class DiffusionDetAudioDataset(IterableDataset):
                 
         current_times = {}  
         new_items = {}
-        unique_labels = set()
         max_boxes = 0
         prev_segment = -1
         for new_annotation, new_label, new_segment in zip(new_annotations, new_labels, new_segments):
@@ -100,7 +113,6 @@ class DiffusionDetAudioDataset(IterableDataset):
                     for missing_segment in range(prev_segment + 1, new_segment):
                         new_items[missing_segment] = {
                             "segment_id": missing_segment, # self.feature_extractor(waveform_segments[missing_segment].squeeze(0).numpy(), return_tensors="pt", sampling_rate=self.sample_rate)["input_values"],
-                            "segment": None,
                             "time_pairs": [[0, self.seconds_per_segment * 100]],
                             "speaker_ids": [0],
                             "audio_file": audio_dict["file_name"]
@@ -117,7 +129,6 @@ class DiffusionDetAudioDataset(IterableDataset):
                 current_times[new_segment] = 0
                 new_items[new_segment] = {
                     "segment_id": new_segment, # self.feature_extractor(waveform_segments[new_segment].squeeze(0).numpy(), return_tensors="pt", sampling_rate=self.sample_rate)["input_values"],
-                    "segment": None,
                     "time_pairs": [],
                     "speaker_ids": [],
                     "audio_file": audio_dict["file_name"]
@@ -135,63 +146,64 @@ class DiffusionDetAudioDataset(IterableDataset):
             new_items[new_segment]["time_pairs"].append(new_annotation)
             new_items[new_segment]["speaker_ids"].append(1) # new_label forced to 1 = speach
             
-            unique_labels.add(new_label)
             max_boxes = max(max_boxes, len(new_items[new_segment]["time_pairs"]))
             
             prev_segment = new_segment
         
-        # Load the audio file if it has not been loaded yet
-        if audio_dict["file_name"] not in self.audio_waveform_segments:
-            
-            # Load the audio file
-            audio_path = audio_dict["file_name"]
-            f = open(audio_path, 'rb')
-            waveform, sr = torchaudio.load(f)
-            f.close()
-
-            # Check if the audio is stereo (2 channels)
-            if waveform.shape[0] > 1:
-                # Convert to mono by averaging the two channels
-                waveform = waveform.mean(dim=0, keepdim=True)
-            
-            # Resample if needed
-            if sr != self.sample_rate:
-                resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
-                waveform = resampler(waveform)
-            
-            # split the audio in segments of x-seconds
-            segment_length = self.seconds_per_segment * self.sample_rate #check this
-            waveform_segments = waveform.split(segment_length, dim=1)
-            
-            self.audio_waveform_segments[audio_dict["file_name"]] = waveform_segments
+        # add noise at the end of the last segment if needed
+        if prev_segment != -1 and current_times[prev_segment] < (self.seconds_per_segment * 100) - 0.001:
+            new_items[prev_segment]["time_pairs"].append([current_times[prev_segment], self.seconds_per_segment * 100])
+            new_items[prev_segment]["speaker_ids"].append(0)
+            current_times[prev_segment] = self.seconds_per_segment * 100
         
-        return new_items, unique_labels, max_boxes
+        if len(waveform_segments) > max(new_items.keys()) + 1:
+            for missing_segment in range(max(new_items.keys()) + 1, len(waveform_segments)):
+                new_items[missing_segment] = {
+                    "segment_id": missing_segment,
+                    "time_pairs": [[0, self.seconds_per_segment * 100]],
+                    "speaker_ids": [0],
+                    "audio_file": audio_dict["file_name"]
+                }
+                
+        assert len(waveform_segments) == max(new_items.keys()) + 1
+        return new_items, max_boxes
+    
+    def load_audio(self, audio_path):
+        # Load the audio file
+        f = open(audio_path, 'rb')
+        waveform, sr = torchaudio.load(f)
+        f.close()
+
+        # Check if the audio is stereo (2 channels)
+        if waveform.shape[0] > 1:
+            # Convert to mono by averaging the two channels
+            waveform = waveform.mean(dim=0, keepdim=True)
+        
+        # Resample if needed
+        if sr != self.sample_rate:
+            resampler = torchaudio.transforms.Resample(sr, self.sample_rate)
+            waveform = resampler(waveform)
+        
+        # split the audio in segments of x-seconds
+        segment_length = self.seconds_per_segment * self.sample_rate #check this
+        waveform_segments = waveform.split(segment_length, dim=1)
+        
+        return waveform_segments
     
     def audio_generator(self):
         new_id = 0
         self.all_segments = {}
-        all_labels = set()
         self.max_boxes = 0
         
-        for idx_audio in trange(len(self.annotations_per_audio), leave=False):
+        for idx_audio in trange(len(self.annotations_per_audio), leave=False, disable=False):
             
-            segments, unique_labels, max_boxes_segment = self.segments_generator(idx_audio)
+            segments, max_boxes_segment = self.segments_generator(idx_audio)
             
-            all_labels.update(unique_labels)
             self.max_boxes = max(self.max_boxes, max_boxes_segment)
             
             for _, v in segments.items():
                 self.all_segments[new_id] = v
                 new_id += 1
-        """
-        if self.fit_label_encoder:
-            self.label_encoder = self.label_encoder.fit(list(all_labels))
-            with open("datasets/ami/classes.pkl", "wb") as f:
-                pickle.dump(self.label_encoder, f)
-        else:
-            with open("datasets/ami/classes.pkl", "rb") as f:
-                self.label_encoder = pickle.load(f)
-        """
     
     def __init__(self, cfg, name:str="ami", split:str="train", label_encoder: LabelEncoder | None = None):
         
@@ -218,9 +230,10 @@ class DiffusionDetAudioDataset(IterableDataset):
             
             print("- sampling rate:", self.feature_extractor.sampling_rate)
             print("- max length:", self.feature_extractor.max_length)
-            #print("- number of classes", len(self.label_encoder.classes_))
             print("- max boxes per segment", self.max_boxes)
-            
+            print("- number of segments", len(self))
+        else:
+            raise ValueError(f"Dataset {name} not supported.")
             
     @staticmethod
     def plot_spectrogram(spectrogram, 
@@ -303,7 +316,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             "image": features.squeeze(0),
             "instances": Instances(
                 image_size = features.shape[-2:],
-                gt_boxes = Boxes(torch.tensor([[st, 0, et, features.shape[-1]] for st, et in self.all_segments[idx_segment]["time_pairs"]])),
+                gt_boxes = Boxes(torch.tensor([[0, st, features.shape[-1], et] for st, et in self.all_segments[idx_segment]["time_pairs"]])),
                 gt_classes = torch.as_tensor(
                                     [
                                         speaker_id

@@ -173,9 +173,9 @@ class DiffusionDet(nn.Module):
         x_boxes = box_cxcywh_to_xyxy(x_boxes)
         x_boxes = x_boxes * images_whwh[:, None, :]
         
-        x_boxes = constant_box_xyxy(x_boxes, 0, self.image_height) # make 2 dimension constant as 0 and image_height
+        x_boxes = constant_box_xyxy(x_boxes, 0, self.image_width) # make 2 dimension constant as 0 and image_height
         
-        outputs_class, outputs_coord = self.head(backbone_feats, x_boxes, t, None, self.image_height)
+        outputs_class, outputs_coord = self.head(backbone_feats, x_boxes, t, None, self.image_width)
 
         x_start = outputs_coord[-1]  # (batch, num_proposals, 4) predict boxes: absolute coordinates (x1, y1, x2, y2)
         x_start = x_start / images_whwh[:, None, :]
@@ -310,7 +310,7 @@ class DiffusionDet(nn.Module):
         if isinstance(images, (list, torch.Tensor)):
             images = nested_tensor_from_tensor_list(images)
             
-        self.image_height = images_whwh[0][0].item()
+        self.image_width = images_whwh[0][0].item()
 
         # Feature Extraction.
         src = self.backbone(images.tensor)
@@ -331,9 +331,9 @@ class DiffusionDet(nn.Module):
             x_boxes = x_boxes * images_whwh[:, None, :]
 
             # force two coordinates to 0 and image_height
-            x_boxes = constant_box_xyxy(x_boxes, 0, self.image_height) # make 2 dimension constant as 0 and image_height
+            x_boxes = constant_box_xyxy(x_boxes, 0, self.image_width) # make 2 dimension constant as 0 and image_height
             
-            outputs_class, outputs_coord = self.head(features, x_boxes, t, None, self.image_height) #need to change boxes: here we want the model to use 2D boxes
+            outputs_class, outputs_coord = self.head(features, x_boxes, t, None, self.image_width) #need to change boxes: here we want the model to use 2D boxes
             output = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
 
             if self.deep_supervision:
