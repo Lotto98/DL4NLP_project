@@ -64,7 +64,7 @@ def create_annotations_ami(split:str="train"):
         
         return list(aggregated_df.to_dict("index").values()), aggregated_df["meeting_id"].unique()
     
-    ds = load_dataset("edinburghcstr/ami", "ihm", split=split)
+    ds = load_dataset("edinburghcstr/ami", "ihm", split=split, trust_remote_code=True)
     ds_dict, meeting_ids = get_time_pairs_from_dataset(ds)
     
     os.makedirs("datasets/ami/annotations", exist_ok=True)
