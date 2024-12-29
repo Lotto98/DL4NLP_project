@@ -283,7 +283,7 @@ class Trainer(DefaultTrainer):
         # we can use the saved checkpoint to debug.
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
         
-        ret.append(hooks.BestCheckpointer(cfg.TEST.EVAL_PERIOD, self.checkpointer, "BHO"))
+        ret.append(hooks.BestCheckpointer(cfg.TEST.EVAL_PERIOD, self.checkpointer, "BHO", "max"))
 
         if comm.is_main_process():
             # Here the default print/log frequency of each writer is used.
