@@ -125,11 +125,7 @@ class Trainer(DefaultTrainer):
         
         dataset = DiffusionDetAudioDataset(name="ami", split="train", cfg=cfg)
         
-        #from tqdm import tqdm
-        
-        #for a in tqdm(dataset):
-        #    pass
-        
+        assert len(dataset) == cfg.INPUT.TRAINING_DATASET_LENGTH, f"dataset len is{len(dataset)} but {cfg.INPUT.TRAINING_DATASET_LENGTH} was provided in config"
         
         return build_batch_data_loader(dataset,
                 total_batch_size=cfg.INPUT.TOT_BATCH_SIZE,
@@ -305,7 +301,14 @@ def setup(args):
     add_model_ema_configs(cfg)
     cfg.merge_from_file(args.config_file)
     cfg.merge_from_list(args.opts)
+    
+    cfg.defrost()
+    cfg.TEST.EVAL_PERIOD = cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
+    cfg.SOLVER.MAX_ITER = cfg.INPUT.TRAINING_DATASET_LENGTH  // cfg.INPUT.TOT_BATCH_SIZE * cfg.SOLVER.NUM_EPOCHS #stop training after num_epochs
+    
+    #TODO: add SOLVER.STEPS here to be parametrized by MAX_ITER
     cfg.freeze()
+    
     default_setup(cfg, args)
     return cfg
 
