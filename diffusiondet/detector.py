@@ -75,6 +75,8 @@ class DiffusionDet(nn.Module):
         self.num_proposals = cfg.MODEL.DiffusionDet.NUM_PROPOSALS
         self.hidden_dim = cfg.MODEL.DiffusionDet.HIDDEN_DIM
         self.num_heads = cfg.MODEL.DiffusionDet.NUM_HEADS
+        self.nms_thresh = cfg.MODEL.DiffusionDet.NMS_THRESH
+        self.box_renewal_threshold = cfg.MODEL.DiffusionDet.BOX_RENEWAL_THRESHOLD
 
         # Build Backbone.
         self.backbone = build_backbone(cfg)
@@ -212,7 +214,7 @@ class DiffusionDet(nn.Module):
 
             if self.box_renewal:  # filter
                 score_per_image, box_per_image = outputs_class[-1][0], outputs_coord[-1][0]
-                threshold = 0 #0.5
+                threshold = self.box_renewal_threshold
                 score_per_image = torch.sigmoid(score_per_image)
                 value, _ = torch.max(score_per_image, -1, keepdim=False)
                 keep_idx = value > threshold
@@ -257,7 +259,7 @@ class DiffusionDet(nn.Module):
             scores_per_image = torch.cat(ensemble_score, dim=0)
             labels_per_image = torch.cat(ensemble_label, dim=0)
             if self.use_nms:
-                keep = batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
+                keep = batched_nms(box_pred_per_image, scores_per_image, labels_per_image, self.nms_thresh)
                 box_pred_per_image = box_pred_per_image[keep]
                 scores_per_image = scores_per_image[keep]
                 labels_per_image = labels_per_image[keep]
@@ -278,7 +280,7 @@ class DiffusionDet(nn.Module):
                 height = input_per_image.get("height", image_size[0])
                 width = input_per_image.get("width", image_size[1])
                 r = detector_postprocess(results_per_image, height, width)
-                processed_results.append({"instances": r})
+                processed_results.append({"instances": r, "class_logits": results_per_image.scores})
             return processed_results
 
     # forward diffusion
@@ -493,7 +495,7 @@ class DiffusionDet(nn.Module):
                     return box_pred_per_image, scores_per_image, labels_per_image
 
                 if self.use_nms:
-                    keep = batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
+                    keep = batched_nms(box_pred_per_image, scores_per_image, labels_per_image, self.nms_thresh)
                     box_pred_per_image = box_pred_per_image[keep]
                     scores_per_image = scores_per_image[keep]
                     labels_per_image = labels_per_image[keep]
@@ -514,7 +516,7 @@ class DiffusionDet(nn.Module):
                     return box_pred_per_image, scores_per_image, labels_per_image
 
                 if self.use_nms:
-                    keep = batched_nms(box_pred_per_image, scores_per_image, labels_per_image, 0.5)
+                    keep = batched_nms(box_pred_per_image, scores_per_image, labels_per_image, self.nms_thresh)
                     box_pred_per_image = box_pred_per_image[keep]
                     scores_per_image = scores_per_image[keep]
                     labels_per_image = labels_per_image[keep]

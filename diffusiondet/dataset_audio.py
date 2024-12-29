@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torchaudio
 import matplotlib.pyplot as plt
-import librosa
+from .loss import SetCriterionDynamicK, HungarianMatcherDynamicK
 
 from detectron2.data import transforms as T
 from transformers import ASTFeatureExtractor
@@ -108,6 +108,7 @@ class DiffusionDetAudioDataset(IterableDataset):
         prev_segment = -1
         for new_annotation, new_label, new_segment in zip(new_annotations, new_labels, new_segments):
             if new_segment not in new_items:  
+                """ UNCOMMENT TO ADD NOISE
                 # if there are missing segments, add noise
                 if prev_segment != -1 and new_segment - prev_segment > 1:
                     for missing_segment in range(prev_segment + 1, new_segment):
@@ -125,6 +126,17 @@ class DiffusionDetAudioDataset(IterableDataset):
                     new_items[prev_segment]["time_pairs"].append([current_times[prev_segment], self.seconds_per_segment * 100])
                     new_items[prev_segment]["speaker_ids"].append(0)
                     current_times[prev_segment] = self.seconds_per_segment * 100
+                """
+                
+                # if there are missing segments, add noise
+                if prev_segment != -1 and new_segment - prev_segment > 1:
+                    for missing_segment in range(prev_segment + 1, new_segment):
+                        new_items[missing_segment] = {
+                            "segment_id": missing_segment, 
+                            "time_pairs": [],
+                            "speaker_ids": [],
+                            "audio_file": audio_dict["file_name"]
+                        }
                 
                 current_times[new_segment] = 0
                 new_items[new_segment] = {
@@ -133,7 +145,8 @@ class DiffusionDetAudioDataset(IterableDataset):
                     "speaker_ids": [],
                     "audio_file": audio_dict["file_name"]
                 }
-                
+            
+            """ UNCOMMENT TO ADD NOISE 
             # transform to two classes noise (0) and silence (1)
             st, et = new_annotation
             if st - current_times[new_segment] > 0.001:
@@ -142,14 +155,26 @@ class DiffusionDetAudioDataset(IterableDataset):
             
             if et > current_times[new_segment]:
                 current_times[new_segment] = et
+            """
 
             new_items[new_segment]["time_pairs"].append(new_annotation)
-            new_items[new_segment]["speaker_ids"].append(1) # new_label forced to 1 = speach
+            
+            if new_label[2] == 'E':
+                new_items[new_segment]["speaker_ids"].append(0)
+            elif new_label[2] == 'D':
+                new_items[new_segment]["speaker_ids"].append(1)
+            elif new_label[2] == 'O':
+                new_items[new_segment]["speaker_ids"].append(2)
+            else:
+                raise ValueError(f"Speaker label {new_label[2]} not supported.")
+            
+            #new_items[new_segment]["speaker_ids"].append(0) # new_label forced to 1 = speach
             
             max_boxes = max(max_boxes, len(new_items[new_segment]["time_pairs"]))
             
             prev_segment = new_segment
         
+        """ UNCOMMENT TO ADD NOISE
         # add noise at the end of the last segment if needed
         if prev_segment != -1 and current_times[prev_segment] < (self.seconds_per_segment * 100) - 0.001:
             new_items[prev_segment]["time_pairs"].append([current_times[prev_segment], self.seconds_per_segment * 100])
@@ -164,8 +189,29 @@ class DiffusionDetAudioDataset(IterableDataset):
                     "speaker_ids": [0],
                     "audio_file": audio_dict["file_name"]
                 }
+        """
+
+        # add empty segments if needed at the beginning and at the end
+        if min(new_items.keys()) !=0:
+            for missing_segment in range(0, min(new_items.keys())):
+                new_items[missing_segment] = {
+                    "segment_id": missing_segment,
+                    "time_pairs": [],
+                    "speaker_ids": [],
+                    "audio_file": audio_dict["file_name"]
+                }
+        
+        if len(waveform_segments) > max(new_items.keys()) + 1:
+            for missing_segment in range(max(new_items.keys()) + 1, len(waveform_segments)):
+                new_items[missing_segment] = {
+                    "segment_id": missing_segment,
+                    "time_pairs": [],
+                    "speaker_ids": [],
+                    "audio_file": audio_dict["file_name"]
+                }
                 
-        assert len(waveform_segments) == max(new_items.keys()) + 1
+        assert len(waveform_segments) == len(new_items)
+        
         return new_items, max_boxes
     
     def load_audio(self, audio_path):
@@ -303,14 +349,16 @@ class DiffusionDetAudioDataset(IterableDataset):
             sampling_rate=self.sample_rate
         )["input_values"]
         
-        
-        #self.plot_spectrogram(
-        #    features, 
-        #    self.all_segments[idx_segment]["time_pairs"], 
-        #    self.all_segments[idx_segment]["speaker_ids"], 
-        #    self.sample_rate, 
-        #    title=f"Mel-Spectrogram for segment {idx_segment}"
-        #)
+        if len(self.all_segments[idx_segment]["time_pairs"]) == 0:
+            #print("WARNING: segment", idx_segment, "has no time pairs")
+            pass
+            #self.plot_spectrogram(
+            #    features, 
+            #    self.all_segments[idx_segment]["time_pairs"], 
+            #    self.all_segments[idx_segment]["speaker_ids"], 
+            #    self.sample_rate, 
+            #    title=f"Mel-Spectrogram for segment {idx_segment}"
+            #)
         
         return {
             "image": features.squeeze(0),
@@ -351,16 +399,74 @@ class DiffusionDetAudioDataset(IterableDataset):
 class AudioEvaluator(DatasetEvaluator):
     def __init__(self, name, cfg, output_dir):
         super().__init__()
+        
+        self.num_heads = cfg.MODEL.DiffusionDet.NUM_HEADS
+        self.num_classes = cfg.MODEL.DiffusionDet.NUM_CLASSES
+        
+        # Loss parameters:
+        class_weight = cfg.MODEL.DiffusionDet.CLASS_WEIGHT
+        giou_weight = cfg.MODEL.DiffusionDet.GIOU_WEIGHT
+        l1_weight = cfg.MODEL.DiffusionDet.L1_WEIGHT
+        no_object_weight = cfg.MODEL.DiffusionDet.NO_OBJECT_WEIGHT
+        self.deep_supervision = cfg.MODEL.DiffusionDet.DEEP_SUPERVISION
+        self.use_focal = cfg.MODEL.DiffusionDet.USE_FOCAL
+        self.use_fed_loss = cfg.MODEL.DiffusionDet.USE_FED_LOSS
+        self.use_nms = cfg.MODEL.DiffusionDet.USE_NMS
+
+        # Build Criterion.
+        matcher = HungarianMatcherDynamicK(
+            cfg=cfg, cost_class=class_weight, cost_bbox=l1_weight, cost_giou=giou_weight, use_focal=self.use_focal
+        )
+        weight_dict = {"loss_ce": class_weight, "loss_bbox": l1_weight, "loss_giou": giou_weight}
+        if self.deep_supervision:
+            aux_weight_dict = {}
+            for i in range(self.num_heads - 1):
+                aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
+            weight_dict.update(aux_weight_dict)
+
+        losses = ["labels", "boxes"]
+
+        self.criterion = SetCriterionDynamicK(
+            cfg=cfg, num_classes=self.num_classes, matcher=matcher, weight_dict=weight_dict, eos_coef=no_object_weight,
+            losses=losses, use_focal=self.use_focal,)
     
     def reset(self):
         pass
     
+    def _bb_to_time_pairs(self, boxes):
+        _, y0, _, y1 = boxes.unbind(-1)
+        return torch.stack([y0, y1], dim=-1).tolist()
+    
     def process(self, inputs, outputs):
         
-        for input, output in zip(inputs, outputs):
-            print(input)
-            print(output)
-        pass
+        formatted_inputs = {}
+        formatted_outputs = []
+        
+        for i, o in zip(inputs, outputs):
+            
+            if False:
+                times=self._bb_to_time_pairs(input["instances"].gt_boxes.tensor)
+                
+                DiffusionDetAudioDataset.plot_spectrogram(
+                    input["image"], 
+                    times, 
+                    input["instances"].gt_classes.tolist(), 
+                    16000, 
+                    title=f"Mel-Spectrogram for gt segment"
+                )
+                
+                times = self._bb_to_time_pairs(output["instances"].pred_boxes.tensor)
+                
+                DiffusionDetAudioDataset.plot_spectrogram(
+                    input["image"], 
+                    times, 
+                    output["instances"].pred_classes.tolist(), 
+                    16000, 
+                    title=f"Mel-Spectrogram for gt segment"
+                )
+        
+        #maybe not feasible because we dont have the class logits
+        #self.criterion(formatted_outputs, formatted_inputs)
     
     def evaluate(self):
-        pass
+        return {"BHO": torch.rand(1).item()}

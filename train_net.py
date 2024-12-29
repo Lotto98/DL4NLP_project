@@ -125,6 +125,11 @@ class Trainer(DefaultTrainer):
         
         dataset = DiffusionDetAudioDataset(name="ami", split="train", cfg=cfg)
         
+        #from tqdm import tqdm
+        
+        #for a in tqdm(dataset):
+        #    pass
+        
         
         return build_batch_data_loader(dataset,
                 total_batch_size=cfg.INPUT.TOT_BATCH_SIZE,
@@ -137,7 +142,7 @@ class Trainer(DefaultTrainer):
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
         
-        dataset = DiffusionDetAudioDataset(name="ami", split="test", cfg=cfg)
+        dataset = DiffusionDetAudioDataset(name="ami", split="validation", cfg=cfg)
         
         #from tqdm import tqdm 
         
@@ -281,6 +286,8 @@ class Trainer(DefaultTrainer):
         # Do evaluation after checkpointer, because then if it fails,
         # we can use the saved checkpoint to debug.
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
+        
+        ret.append(hooks.BestCheckpointer(cfg.TEST.EVAL_PERIOD, self.checkpointer, "BHO"))
 
         if comm.is_main_process():
             # Here the default print/log frequency of each writer is used.
@@ -314,7 +321,7 @@ def main(args):
         model = Trainer.build_model(cfg)
         kwargs = may_get_ema_checkpointer(cfg, model)
         
-        model_path = os.path.join(cfg.OUTPUT_DIR, "model_0018899.pth")
+        model_path = os.path.join(cfg.OUTPUT_DIR, "model_best.pth")
         
         if cfg.MODEL_EMA.ENABLED:
             EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(model_path, #cfg.MODEL.WEIGHTS,

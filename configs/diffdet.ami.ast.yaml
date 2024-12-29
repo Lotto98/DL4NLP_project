@@ -7,13 +7,15 @@ MODEL:
   DiffusionDet:
     HIDDEN_DIM: 256
     NUM_PROPOSALS: 20
-    NUM_CLASSES: 2
+    NUM_CLASSES: 3
     SAMPLE_STEP: 3
+    NMS_THRESH: 0.5
+    BOX_RENEWAL_THRESHOLD: 0.5
   EMA_ENABLED: False
 DATASETS:
   TRAIN: ("ami_train",)
   # EVAL: ("ami_val",)
-  TEST:  ("ami_test",)
+  TEST:  ("ami_validation",)
 INPUT:
   SAMPLING_RATE: 16000
   SECONDS_PER_SEGMENT: 10 #30

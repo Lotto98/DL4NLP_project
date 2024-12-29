@@ -25,6 +25,8 @@ def add_diffusiondet_config(cfg):
     cfg.MODEL.DiffusionDet.NUM_CLS = 1
     cfg.MODEL.DiffusionDet.NUM_REG = 3
     cfg.MODEL.DiffusionDet.NUM_HEADS = 6
+    cfg.MODEL.DiffusionDet.NMS_THRESH = 0.5
+    cfg.MODEL.DiffusionDet.BOX_RENEWAL_THRESHOLD = 0.5
 
     # Dynamic Conv.
     cfg.MODEL.DiffusionDet.NUM_DYNAMIC = 2
