@@ -499,7 +499,12 @@ class AudioEvaluator(DatasetEvaluator):
         """
         Evaluate IoU and compute metrics across multiple thresholds.
         """
-        if len(pred_boxes) == 0 or len(gt_boxes) == 0:
+        if len(pred_boxes) == 0:
+            # No predictions, AP is 0 for all thresholds if there are GT boxes
+            return {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+    
+        if len(gt_boxes) == 0:
+            # No ground truth, AP is 0 for all thresholds if there are predicted boxes
             return {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
 
         # Calculate IoU for each pair of boxes
@@ -508,12 +513,14 @@ class AudioEvaluator(DatasetEvaluator):
         # Compute precision for each IoU threshold
         precisions = {}
         for threshold in self.iou_thresholds:
-            matched = (iou_matrix > threshold).sum(axis=1)  # Count matches for each ground truth box
-            precision = matched.sum() / len(pred_boxes) if len(pred_boxes) > 0 else 0.0
+            matches = iou_matrix > threshold  # Boolean matrix of matches
+            true_positives = matches.any(axis=0).sum()  # Count matched predicted boxes
+            false_positives = len(pred_boxes) - true_positives
+            precision = true_positives / (true_positives + false_positives) if len(pred_boxes) > 0 else 0.0
             precisions[f"AP@{threshold:.2f}"] = precision
 
         return precisions
-    
+        
     def calculate_iou_matrix(self, gt_boxes, pred_boxes):
         """
         Calculates the IoU matrix between ground truth and predicted boxes.
