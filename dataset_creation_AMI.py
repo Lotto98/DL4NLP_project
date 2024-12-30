@@ -18,27 +18,38 @@ def create_annotations_ami(split:str="train"):
         
         new_speaker_ids = [row["speaker_id"][0]]
         new_time_pairs = [row["time_pairs"][0]]
-        for speaker_id, time_pair in zip(row["speaker_id"], row["time_pairs"]):
+        new_text = [row["text"][0]]
+        for speaker_id, time_pair, text in zip(row["speaker_id"], row["time_pairs"], row["text"]):
             if speaker_id == new_speaker_ids[-1] and time_pair[0] < new_time_pairs[-1][1] + time_delta:
                 max_end_time = max(new_time_pairs[-1][1], time_pair[1])
-                new_time_pairs[-1] = (new_time_pairs[-1][0], max_end_time)            
+                new_time_pairs[-1] = (new_time_pairs[-1][0], max_end_time)
+                
+                if max_end_time == time_pair[1]:
+                    new_text[-1] += " " + text
+                else:
+                    new_text[-1] = text + " " + new_text[-1]
+        
             elif speaker_id == new_speaker_ids[-1] and (abs(time_pair[0] - new_time_pairs[-1][1]) <= time_delta):
                 new_time_pairs[-1] = (new_time_pairs[-1][0], time_pair[1])
+                new_text[-1] = text + " " + new_text[-1]
             else:
                 new_speaker_ids.append(speaker_id)
                 new_time_pairs.append(time_pair)
+                new_text.append(text)
         
         new_row = row.copy()
         new_row['meeting_id'] = row['meeting_id']
         new_row["speaker_id"] = new_speaker_ids
         new_row["time_pairs"] = new_time_pairs
         
+        #print(new_row)
+        
         return new_row
     
     def get_time_pairs_from_dataset(dataset:Dataset):
     
         # Convert the train dataset to a pandas DataFrame
-        df = dataset.to_pandas()[["meeting_id","speaker_id","begin_time", "end_time"]]
+        df = dataset.to_pandas()[["meeting_id","speaker_id","begin_time", "end_time", "text"]]
         
         #print(df[df["speaker_id"] == "MEE071"])
         
@@ -60,7 +71,7 @@ def create_annotations_ami(split:str="train"):
         #[print(x[0], x[1], '\n') for x in zip(list(aggregated_df.loc[aggregated_df['meeting_id'] == 'ES2011a']['speaker_id']),
         #                                      list(aggregated_df.loc[aggregated_df['meeting_id'] == 'ES2011a']['time_pairs']))]
         
-        aggregated_df = aggregated_df[['meeting_id',"time_pairs","speaker_id"]]
+        aggregated_df = aggregated_df[['meeting_id',"time_pairs","speaker_id", "text"]]
         
         return list(aggregated_df.to_dict("index").values()), aggregated_df["meeting_id"].unique()
     
@@ -118,7 +129,7 @@ if __name__ == "__main__":
         print()
         
         print(len(unique_speakers_ids_train))
-        #print(len(unique_speakers_ids_validation))
+        print(len(unique_speakers_ids_validation))
         print(len(unique_speakers_ids_test))
         
         print(len(unique_ids))

@@ -51,7 +51,8 @@ class DiffusionDetAudioDataset(IterableDataset):
         new_annotations = []
         new_labels = []
         new_segments = []
-        for (start_time, end_time), speaker_id in zip(audio_dict["time_pairs"], audio_dict["speaker_id"]):
+        new_texts = []
+        for (start_time, end_time), speaker_id, text in zip(audio_dict["time_pairs"], audio_dict["speaker_id"], audio_dict["text"]):
             if abs(start_time - end_time) < 0.001:
                 #print("skipping", start_time, end_time, speaker_id)
                 continue
@@ -92,21 +93,23 @@ class DiffusionDetAudioDataset(IterableDataset):
                 new_annotations.append([new_start_time*100, new_end_time*100]) # * 100 to convert in correct scale for spectogram
                 new_labels.append(speaker_id)
                 new_segments.append(segment_index)
+                new_texts.append(text)
                 
         # sort arrays
-        combined = list(zip(new_segments, new_annotations, new_labels))
+        combined = list(zip(new_segments, new_annotations, new_labels, new_texts))
         combined.sort(key=lambda x: (x[0], x[1][0]))  # Ordina per segment_index
 
-        new_segments, new_annotations, new_labels = zip(*combined)
+        new_segments, new_annotations, new_labels, new_texts = zip(*combined)
         new_segments = list(new_segments)
         new_annotations = list(new_annotations)
         new_labels = list(new_labels)
+        new_texts = list(new_texts)
                 
         current_times = {}  
         new_items = {}
         max_boxes = 0
         prev_segment = -1
-        for new_annotation, new_label, new_segment in zip(new_annotations, new_labels, new_segments):
+        for new_annotation, new_label, new_segment, t in zip(new_annotations, new_labels, new_segments, new_texts):
             if new_segment not in new_items:  
                 """ UNCOMMENT TO ADD NOISE
                 # if there are missing segments, add noise
@@ -135,15 +138,17 @@ class DiffusionDetAudioDataset(IterableDataset):
                             "segment_id": missing_segment, 
                             "time_pairs": [],
                             "speaker_ids": [],
-                            "audio_file": audio_dict["file_name"]
+                            "audio_file": audio_dict["file_name"],
+                            "text": []
                         }
                 
-                current_times[new_segment] = 0
+                #current_times[new_segment] = 0
                 new_items[new_segment] = {
                     "segment_id": new_segment, # self.feature_extractor(waveform_segments[new_segment].squeeze(0).numpy(), return_tensors="pt", sampling_rate=self.sample_rate)["input_values"],
                     "time_pairs": [],
                     "speaker_ids": [],
-                    "audio_file": audio_dict["file_name"]
+                    "audio_file": audio_dict["file_name"],
+                    "text": []
                 }
             
             """ UNCOMMENT TO ADD NOISE 
@@ -159,6 +164,7 @@ class DiffusionDetAudioDataset(IterableDataset):
 
             new_items[new_segment]["time_pairs"].append(new_annotation)
             
+            """
             if new_label[2] == 'E':
                 new_items[new_segment]["speaker_ids"].append(0)
             elif new_label[2] == 'D':
@@ -167,8 +173,10 @@ class DiffusionDetAudioDataset(IterableDataset):
                 new_items[new_segment]["speaker_ids"].append(2)
             else:
                 raise ValueError(f"Speaker label {new_label[2]} not supported.")
+            """
+            new_items[new_segment]["text"].append(t)
             
-            #new_items[new_segment]["speaker_ids"].append(0) # new_label forced to 1 = speach
+            new_items[new_segment]["speaker_ids"].append(0) # new_label forced to 0 = speach
             
             max_boxes = max(max_boxes, len(new_items[new_segment]["time_pairs"]))
             
@@ -198,7 +206,8 @@ class DiffusionDetAudioDataset(IterableDataset):
                     "segment_id": missing_segment,
                     "time_pairs": [],
                     "speaker_ids": [],
-                    "audio_file": audio_dict["file_name"]
+                    "audio_file": audio_dict["file_name"],
+                    "text": []
                 }
         
         if len(waveform_segments) > max(new_items.keys()) + 1:
@@ -207,12 +216,13 @@ class DiffusionDetAudioDataset(IterableDataset):
                     "segment_id": missing_segment,
                     "time_pairs": [],
                     "speaker_ids": [],
-                    "audio_file": audio_dict["file_name"]
+                    "audio_file": audio_dict["file_name"],
+                    "text": []
                 }
                 
         assert len(waveform_segments) == len(new_items)
         
-        return new_items, max_boxes
+        return dict(sorted(new_items.items())), max_boxes
     
     def load_audio(self, audio_path):
         # Load the audio file
@@ -284,6 +294,7 @@ class DiffusionDetAudioDataset(IterableDataset):
     @staticmethod
     def plot_spectrogram(spectrogram, 
                         time_pairs, speaker_ids,
+                        texts,
                         sample_rate,
                          title="Mel-Spectrogram"):
         
@@ -313,8 +324,8 @@ class DiffusionDetAudioDataset(IterableDataset):
         color_palette = plt.cm.get_cmap("spring", len(unique_speaker_ids))
         color_map = {speaker_id: color_palette(i) for i, speaker_id in enumerate(unique_speaker_ids)}
         speakers_already=[]
-        for (start_time, end_time), speaker_id in zip(time_pairs, speaker_ids):
-            print(start_time, end_time, speaker_id)
+        for (start_time, end_time), speaker_id, t in zip(time_pairs, speaker_ids, texts):
+            print(start_time, end_time, speaker_id, t)
             color = color_map.get(speaker_id, 'black')  # Default color is black if speaker_id not in color_map
             
             if speaker_id not in speakers_already:
@@ -332,6 +343,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             # add speaker id on the top of the arrow
             # plt.text((start_time + end_time) / 2, y_pos + 0.1, speaker_id, ha='center', va='bottom', color=color)
         
+        print()
         plt.legend(loc='upper center', bbox_to_anchor=(0.5, -0.1), ncol=3)
         plt.xlabel("Time (cs)")
         plt.ylabel("Mel-spectrogram bins")
@@ -349,16 +361,15 @@ class DiffusionDetAudioDataset(IterableDataset):
             sampling_rate=self.sample_rate
         )["input_values"]
         
-        if len(self.all_segments[idx_segment]["time_pairs"]) == 0:
-            #print("WARNING: segment", idx_segment, "has no time pairs")
-            pass
-            #self.plot_spectrogram(
-            #    features, 
-            #    self.all_segments[idx_segment]["time_pairs"], 
-            #    self.all_segments[idx_segment]["speaker_ids"], 
-            #    self.sample_rate, 
-            #    title=f"Mel-Spectrogram for segment {idx_segment}"
-            #)
+        
+        #self.plot_spectrogram(
+        #    features, 
+        #    self.all_segments[idx_segment]["time_pairs"], 
+        #    self.all_segments[idx_segment]["speaker_ids"],
+        #    self.all_segments[idx_segment]["text"], 
+        #    self.sample_rate, 
+        #    title=f"Mel-Spectrogram for segment {idx_segment}"
+        #)
         
         return {
             "image": features.squeeze(0),
@@ -371,8 +382,11 @@ class DiffusionDetAudioDataset(IterableDataset):
                                         for speaker_id in self.all_segments[idx_segment]["speaker_ids"]
                                     ]
                                     #self.label_encoder.transform(self.all_segments[idx_segment]["speaker_ids"])
-                )
-            )
+                ),
+                texts = self.all_segments[idx_segment]["text"],
+            ),
+            "audio_name": self.all_segments[idx_segment]["audio_file"],
+            "segment_id_for_waveform" : self.all_segments[idx_segment]["segment_id"]
         }
     
     def __iter__(self):
@@ -445,24 +459,26 @@ class AudioEvaluator(DatasetEvaluator):
         for i, o in zip(inputs, outputs):
             
             if False:
-                times=self._bb_to_time_pairs(input["instances"].gt_boxes.tensor)
+                times=self._bb_to_time_pairs(i["instances"].gt_boxes.tensor)
                 
                 DiffusionDetAudioDataset.plot_spectrogram(
-                    input["image"], 
+                    i["image"], 
                     times, 
-                    input["instances"].gt_classes.tolist(), 
+                    i["instances"].gt_classes.tolist(),
+                    i["instances"].texts, 
                     16000, 
-                    title=f"Mel-Spectrogram for gt segment"
+                    title=f"Mel-Spectrogram for gt segment {i["segment_id_for_waveform"]}"
                 )
                 
-                times = self._bb_to_time_pairs(output["instances"].pred_boxes.tensor)
+                times = self._bb_to_time_pairs(o["instances"].pred_boxes.tensor)
                 
                 DiffusionDetAudioDataset.plot_spectrogram(
-                    input["image"], 
+                    i["image"], 
                     times, 
-                    output["instances"].pred_classes.tolist(), 
+                    o["instances"].pred_classes.tolist(), 
+                    i["instances"].texts,
                     16000, 
-                    title=f"Mel-Spectrogram for gt segment"
+                    title=f"Mel-Spectrogram for pred segment {i["segment_id_for_waveform"]}"
                 )
         
         #maybe not feasible because we dont have the class logits

@@ -27,7 +27,7 @@ from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
 from detectron2.data import build_batch_data_loader
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, launch, create_ddp_model, \
-    AMPTrainer, SimpleTrainer, hooks
+    AMPTrainer, SimpleTrainer, hooks, HookBase
 from detectron2.evaluation import COCOEvaluator, LVISEvaluator, verify_results
 from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.modeling import build_model
@@ -239,7 +239,7 @@ class Trainer(DefaultTrainer):
             res = cls.test(cfg, model, evaluators)
         res = OrderedDict({k + "_TTA": v for k, v in res.items()})
         return res
-
+    
     def build_hooks(self):
         """
         Build a list of default hooks, including timing, evaluation,
@@ -288,7 +288,7 @@ class Trainer(DefaultTrainer):
         if comm.is_main_process():
             # Here the default print/log frequency of each writer is used.
             # run writers in the end, so that evaluation metrics are written
-            ret.append(hooks.PeriodicWriter(self.build_writers(), period=20))
+            ret.append(hooks.PeriodicWriter(self.build_writers(), period=1))
         return ret
 
 
@@ -305,6 +305,8 @@ def setup(args):
     cfg.defrost()
     cfg.TEST.EVAL_PERIOD = cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
     cfg.SOLVER.MAX_ITER = cfg.INPUT.TRAINING_DATASET_LENGTH  // cfg.INPUT.TOT_BATCH_SIZE * cfg.SOLVER.NUM_EPOCHS #stop training after num_epochs
+    
+    cfg.SOLVER.WARMUP_ITERS = 1 * (cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE) #warmup for one complete epoch
     
     #TODO: add SOLVER.STEPS here to be parametrized by MAX_ITER
     cfg.freeze()
@@ -324,7 +326,7 @@ def main(args):
         model = Trainer.build_model(cfg)
         kwargs = may_get_ema_checkpointer(cfg, model)
         
-        model_path = os.path.join(cfg.OUTPUT_DIR, "model_best.pth")
+        model_path = os.path.join(cfg.OUTPUT_DIR+"_now", "model_0007199.pth")
         
         if cfg.MODEL_EMA.ENABLED:
             EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(model_path, #cfg.MODEL.WEIGHTS,

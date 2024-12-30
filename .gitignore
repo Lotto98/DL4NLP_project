@@ -3,6 +3,8 @@
 /datasets
 /output
 /output_old
+/output_best
+/output_now
 /models
 /.idea
 /diffusiondet/pretrained_models

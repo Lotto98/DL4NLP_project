@@ -8,6 +8,7 @@
 import math
 import random
 from typing import List
+import json
 from collections import namedtuple
 
 import torch
@@ -23,6 +24,8 @@ from .loss import SetCriterionDynamicK, HungarianMatcherDynamicK
 from .head import DynamicHead
 from .util.box_ops import box_cxcywh_to_xyxy, box_xyxy_to_cxcywh, constant_box_xyxy, constant_box_cxcywh
 from .util.misc import nested_tensor_from_tensor_list
+
+import numpy as np
 
 __all__ = ["DiffusionDet"]
 
@@ -69,6 +72,7 @@ class DiffusionDet(nn.Module):
         super().__init__()
 
         self.device = torch.device(cfg.MODEL.DEVICE)
+        self.out_dir = cfg.OUTPUT_DIR
 
         self.in_features = cfg.MODEL.ROI_HEADS.IN_FEATURES
         self.num_classes = cfg.MODEL.DiffusionDet.NUM_CLASSES
@@ -281,7 +285,7 @@ class DiffusionDet(nn.Module):
                 width = input_per_image.get("width", image_size[1])
                 r = detector_postprocess(results_per_image, height, width)
                 processed_results.append({"instances": r, "class_logits": results_per_image.scores})
-            return processed_results
+            return processed_results, output
 
     # forward diffusion
     def q_sample(self, x_start, t, noise=None):
@@ -323,7 +327,34 @@ class DiffusionDet(nn.Module):
 
         # Prepare Proposals.
         if not self.training:
-            results = self.ddim_sample(batched_inputs, features, images_whwh, images)
+            results, o = self.ddim_sample(batched_inputs, features, images_whwh, images)
+            
+            gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
+            targets, _, _, _ = self.prepare_targets(gt_instances)
+            loss_dict = self.criterion(o, targets)
+            weight_dict = self.criterion.weight_dict
+            for k in loss_dict.keys():
+                if k in weight_dict:
+                    loss_dict[k] *= weight_dict[k]
+            
+            del gt_instances, targets
+            
+            loss_dict = {label: tensor.cpu().item() for label, tensor in loss_dict.items()}
+            
+            total_losses_reduced = sum(loss_dict.values())
+            if not np.isfinite(total_losses_reduced):
+                raise FloatingPointError(
+                    f"Loss became infinite or NaN!\n"
+                    f"loss_dict = {loss_dict}"
+                )
+            loss_dict["total_loss"] = total_losses_reduced
+            
+            #create json file with metrics
+            
+            metrics_file = f"{self.out_dir}/metrics_val.json"
+            with open(metrics_file, "a") as f:
+                f.write(json.dumps(loss_dict) + "\n")
+            
             return results
 
         if self.training:
@@ -395,7 +426,11 @@ class DiffusionDet(nn.Module):
         #gt_boxes = box_xyxy_to_cxcywh(gt_boxes)
         
         t = torch.randint(0, self.num_timesteps, (1,), device=self.device).long()
-        noise = torch.randn(self.num_proposals, 4, device=self.device)
+        
+        if self.training:
+            noise = torch.randn(self.num_proposals, 4, device=self.device)
+        else:
+            noise = torch.zeros_like(gt_boxes)
         
         #noise = box_cxcywh_to_xyxy(noise)
         #noise = constant_box_xyxy(noise, 0, 0) # make 2 dimension constant as 0 and 0
@@ -406,7 +441,7 @@ class DiffusionDet(nn.Module):
             gt_boxes = torch.as_tensor([[0.5, 0.5, 1., 1.]], dtype=torch.float, device=self.device)
             num_gt = 1
 
-        if num_gt < self.num_proposals:
+        if num_gt < self.num_proposals and self.training:
             box_placeholder = torch.randn(self.num_proposals - num_gt, 4,
                                           device=self.device) / 6. + 0.5  # 3sigma = 1/2 --> sigma: 1/6
             box_placeholder[:, 2:] = torch.clip(box_placeholder[:, 2:], min=1e-4)
@@ -416,7 +451,7 @@ class DiffusionDet(nn.Module):
             #box_placeholder = box_xyxy_to_cxcywh(box_placeholder)
             
             x_start = torch.cat((gt_boxes, box_placeholder), dim=0)
-        elif num_gt > self.num_proposals:
+        elif num_gt > self.num_proposals and self.training:
             select_mask = [True] * self.num_proposals + [False] * (num_gt - self.num_proposals)
             random.shuffle(select_mask)
             x_start = gt_boxes[select_mask]
