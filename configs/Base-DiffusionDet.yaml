@@ -1,5 +1,5 @@
 MODEL:
-  DEVICE: "cuda"
+  DEVICE: "cpu"
   META_ARCHITECTURE: "DiffusionDet"
   AST:
     OUT_FEATURES: ["AST_3", "AST_6", "AST_9", "AST_12"]

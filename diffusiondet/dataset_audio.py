@@ -443,9 +443,12 @@ class AudioEvaluator(DatasetEvaluator):
         self.criterion = SetCriterionDynamicK(
             cfg=cfg, num_classes=self.num_classes, matcher=matcher, weight_dict=weight_dict, eos_coef=no_object_weight,
             losses=losses, use_focal=self.use_focal,)
+        
+        self.results = []
     
     def reset(self):
-        pass
+        # resetta le metriche per un nuovo round di valutazione
+        self.results = []
     
     def _bb_to_time_pairs(self, boxes):
         _, y0, _, y1 = boxes.unbind(-1)
@@ -453,7 +456,7 @@ class AudioEvaluator(DatasetEvaluator):
     
     def process(self, inputs, outputs):
         
-        formatted_inputs = {}
+        """formatted_inputs = {}
         formatted_outputs = []
         
         for i, o in zip(inputs, outputs):
@@ -479,10 +482,74 @@ class AudioEvaluator(DatasetEvaluator):
                     i["instances"].texts,
                     16000, 
                     title=f"Mel-Spectrogram for pred segment {i["segment_id_for_waveform"]}"
-                )
+                )"""
+        
+        for input, output in zip(inputs, outputs):
+            gt_boxes = input["instances"].gt_boxes.tensor.numpy()
+            pred_boxes = output["instances"].pred_boxes.tensor.numpy()
+            scores = output["instances"].scores.numpy()
+
+            # Match ground truth boxes to predicted boxes here
+            self.results.append(self.evaluate_boxes(gt_boxes, pred_boxes, scores))
         
         #maybe not feasible because we dont have the class logits
         #self.criterion(formatted_outputs, formatted_inputs)
+        
+    def evaluate_boxes(self, gt_boxes, pred_boxes, scores):
+        """
+        Evaluate IoU and compute metrics across multiple thresholds.
+        """
+        if len(pred_boxes) == 0 or len(gt_boxes) == 0:
+            return {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+
+        # Calculate IoU for each pair of boxes
+        iou_matrix = self.calculate_iou_matrix(gt_boxes, pred_boxes)
+
+        # Compute precision for each IoU threshold
+        precisions = {}
+        for threshold in self.iou_thresholds:
+            matched = (iou_matrix > threshold).sum(axis=1)  # Count matches for each ground truth box
+            precision = matched.sum() / len(pred_boxes) if len(pred_boxes) > 0 else 0.0
+            precisions[f"AP@{threshold:.2f}"] = precision
+
+        return precisions
+    
+    def calculate_iou_matrix(self, gt_boxes, pred_boxes):
+        """
+        Calculates the IoU matrix between ground truth and predicted boxes.
+        """
+        def iou(box1, box2):
+            x1, y1, x2, y2 = np.maximum(box1[:2], box2[:2]), np.minimum(box1[2:], box2[2:])
+            intersection = np.prod(np.maximum(0, x2 - x1 + 1))
+            area1 = np.prod(box1[2:] - box1[:2] + 1)
+            area2 = np.prod(box2[2:] - box2[:2] + 1)
+            union = area1 + area2 - intersection
+            return intersection / union if union > 0 else 0.0
+
+        iou_matrix = np.zeros((len(gt_boxes), len(pred_boxes)))
+        for i, gt_box in enumerate(gt_boxes):
+            for j, pred_box in enumerate(pred_boxes):
+                iou_matrix[i, j] = iou(gt_box, pred_box)
+                
+        return iou_matrix
     
     def evaluate(self):
-        return {"BHO": torch.rand(1).item()}
+        """
+        Aggregate results and compute final metrics.
+        """
+        if len(self.results) == 0:
+            return {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+
+        # Aggregate results across all IoU thresholds
+        final_results = {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+        for res in self.results:
+            for key in final_results.keys():
+                final_results[key] += res[key]
+
+        # Average over all samples
+        num_samples = len(self.results)
+        for key in final_results.keys():
+            final_results[key] /= num_samples
+
+        return final_results
+    
