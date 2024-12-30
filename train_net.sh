@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #SBATCH --job-name=train_net
-#SBATCH --time=1-00:00:00 # days-hh:mm:ss
+#SBATCH --time=5-00:00:00 # days-hh:mm:ss
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --gpus-per-task=1
