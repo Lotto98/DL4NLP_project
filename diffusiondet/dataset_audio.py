@@ -444,6 +444,7 @@ class AudioEvaluator(DatasetEvaluator):
             cfg=cfg, num_classes=self.num_classes, matcher=matcher, weight_dict=weight_dict, eos_coef=no_object_weight,
             losses=losses, use_focal=self.use_focal,)
         
+        self.iou_thresholds = [0.5, 0.75]
         self.results = []
     
     def reset(self):
@@ -511,15 +512,62 @@ class AudioEvaluator(DatasetEvaluator):
         iou_matrix = self.calculate_iou_matrix(gt_boxes, pred_boxes)
 
         # Compute precision for each IoU threshold
-        precisions = {}
+        metrics = {}
         for threshold in self.iou_thresholds:
             matches = iou_matrix > threshold  # Boolean matrix of matches
             true_positives = matches.any(axis=0).sum()  # Count matched predicted boxes
             false_positives = len(pred_boxes) - true_positives
+            false_negatives = len(gt_boxes) - matches.any(axis=1).sum()  # Count unmatched GT boxes
             precision = true_positives / (true_positives + false_positives) if len(pred_boxes) > 0 else 0.0
-            precisions[f"AP@{threshold:.2f}"] = precision
+            metrics[f"AP@{threshold:.2f}"] = precision
+            
+            # Compute precision and recall
+            precision = true_positives / (true_positives + false_positives) if true_positives + false_positives > 0 else 0.0
+            recall = true_positives / (true_positives + false_negatives) if true_positives + false_negatives > 0 else 0.0
 
-        return precisions
+            # Compute F1 score
+            f1 = 2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0.0
+
+            metrics[f"AP@{threshold:.2f}"] = precision
+            metrics[f"F1@{threshold:.2f}"] = f1
+            
+        # compute percentage of speech time correctly covered by pred time pairs
+        tot_time = 0
+        tot_time_covered = 0
+        for gt_box in gt_boxes:
+            gt_start, gt_end = gt_box[1], gt_box[3]
+            tot_time += gt_end - gt_start
+            # sort pred boxes by start time
+            pred_boxes_sorted = sorted(pred_boxes, key=lambda x: x[1])
+            merged = []
+            for pred_box in pred_boxes_sorted:
+                pred_start, pred_end = pred_box[1], pred_box[3]
+      
+                if not merged or pred_start > merged[-1][1]:
+                    merged.append([pred_start, pred_end])
+                else:
+                    merged[-1] = (merged[-1][0], max(merged[-1][1], pred_end))
+
+            # Check coverage and compute uncovered time
+            uncovered_time = 0
+            current_start = gt_start
+
+            for seg_start, seg_end in merged:
+                if seg_start > current_start:
+                    uncovered_time += seg_start - current_start
+                current_start = max(current_start, seg_end)
+
+                if current_start >= gt_end:
+                    break
+
+            if current_start < gt_end:
+                uncovered_time += gt_end - current_start   
+                
+            tot_time_covered += gt_end - gt_start - uncovered_time                 
+
+        metrics["SpeechCoveragePrecentage"] = tot_time_covered / tot_time if tot_time > 0 else 0.0
+        
+        return metrics
         
     def calculate_iou_matrix(self, gt_boxes, pred_boxes):
         """
@@ -541,14 +589,17 @@ class AudioEvaluator(DatasetEvaluator):
         return iou_matrix
     
     def evaluate(self):
-        """
-        Aggregate results and compute final metrics.
-        """
         if len(self.results) == 0:
-            return {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+            results = {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+            results.update({f"F1@{iou:.2f}": 0.0 for iou in self.iou_thresholds})
+            results["SpeechCoveragePrecentage"] = 0.0
+            return results
 
         # Aggregate results across all IoU thresholds
         final_results = {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+        final_results.update({f"F1@{iou:.2f}": 0.0 for iou in self.iou_thresholds})
+        final_results["SpeechCoveragePrecentage"] = 0.0
+
         for res in self.results:
             for key in final_results.keys():
                 final_results[key] += res[key]
