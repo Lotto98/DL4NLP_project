@@ -289,7 +289,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             print("- max boxes per segment", self.max_boxes)
             print("- number of segments", len(self))
             
-            #debug
+            #debug: set the start and end index for the dataset
             if start_ixd is not None or end_idx is not None:
                 start_ixd = 0 if start_ixd is None else start_ixd
                 end_idx = len(self) if end_idx is None else end_idx
