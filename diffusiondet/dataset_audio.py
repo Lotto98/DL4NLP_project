@@ -261,7 +261,7 @@ class DiffusionDetAudioDataset(IterableDataset):
                 self.all_segments[new_id] = v
                 new_id += 1
     
-    def __init__(self, cfg, name:str="ami", split:str="train", label_encoder: LabelEncoder | None = None):
+    def __init__(self, cfg, name:str="ami", split:str="train", start_ixd:int|None=None, end_idx:int|None=None):
         
         if name == "ami":
             self.annotations_per_audio = self.load_ami(split)
@@ -288,6 +288,11 @@ class DiffusionDetAudioDataset(IterableDataset):
             print("- max length:", self.feature_extractor.max_length)
             print("- max boxes per segment", self.max_boxes)
             print("- number of segments", len(self))
+            
+            #debug
+            if start_ixd is not None and end_idx is not None:
+                self.all_segments = {k: v for k, v in self.all_segments.items() if start_ixd <= k <= end_idx}
+            
         else:
             raise ValueError(f"Dataset {name} not supported.")
             
@@ -500,13 +505,25 @@ class AudioEvaluator(DatasetEvaluator):
         """
         Evaluate IoU and compute metrics across multiple thresholds.
         """
+        
+        if len(gt_boxes) == 0 and len(pred_boxes) == 0:
+            # No GT and no predictions, perfect score
+            base_result = {f"AP@{iou:.2f}": 1.0 for iou in self.iou_thresholds}
+            base_result.update({f"F1@{iou:.2f}": 1.0 for iou in self.iou_thresholds})
+            base_result["SpeechCoveragePrecentage"] = 1.0
+            return base_result
+        
+        base_result = {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+        base_result.update({f"F1@{iou:.2f}": 0.0 for iou in self.iou_thresholds})
+        base_result["SpeechCoveragePrecentage"] = 0.0
+        
         if len(pred_boxes) == 0:
             # No predictions, AP is 0 for all thresholds if there are GT boxes
-            return {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+            return base_result
     
         if len(gt_boxes) == 0:
             # No ground truth, AP is 0 for all thresholds if there are predicted boxes
-            return {f"AP@{iou:.2f}": 0.0 for iou in self.iou_thresholds}
+            return base_result
 
         # Calculate IoU for each pair of boxes
         iou_matrix = self.calculate_iou_matrix(gt_boxes, pred_boxes)
@@ -528,7 +545,6 @@ class AudioEvaluator(DatasetEvaluator):
             # Compute F1 score
             f1 = 2 * (precision * recall) / (precision + recall) if precision + recall > 0 else 0.0
 
-            metrics[f"AP@{threshold:.2f}"] = precision
             metrics[f"F1@{threshold:.2f}"] = f1
             
         # compute percentage of speech time correctly covered by pred time pairs
@@ -542,7 +558,6 @@ class AudioEvaluator(DatasetEvaluator):
             merged = []
             for pred_box in pred_boxes_sorted:
                 pred_start, pred_end = pred_box[1], pred_box[3]
-      
                 if not merged or pred_start > merged[-1][1]:
                     merged.append([pred_start, pred_end])
                 else:
@@ -574,8 +589,8 @@ class AudioEvaluator(DatasetEvaluator):
         Calculates the IoU matrix between ground truth and predicted boxes.
         """
         def iou(box1, box2):
-            x1, y1, x2, y2 = np.maximum(box1[:2], box2[:2]), np.minimum(box1[2:], box2[2:])
-            intersection = np.prod(np.maximum(0, x2 - x1 + 1))
+            p1, p2 = np.maximum(box1[:2], box2[:2]), np.minimum(box1[2:], box2[2:])
+            intersection = np.prod(np.maximum(0, p2 - p1 + 1))
             area1 = np.prod(box1[2:] - box1[:2] + 1)
             area2 = np.prod(box2[2:] - box2[:2] + 1)
             union = area1 + area2 - intersection
