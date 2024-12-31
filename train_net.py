@@ -138,7 +138,7 @@ class Trainer(DefaultTrainer):
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
         
-        dataset = DiffusionDetAudioDataset(name="ami", split="validation", cfg=cfg)
+        dataset = DiffusionDetAudioDataset(name="ami", split="validation", cfg=cfg, start_ixd=0, end_idx=50)
         
         #from tqdm import tqdm 
         

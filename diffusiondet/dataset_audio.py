@@ -290,7 +290,9 @@ class DiffusionDetAudioDataset(IterableDataset):
             print("- number of segments", len(self))
             
             #debug
-            if start_ixd is not None and end_idx is not None:
+            if start_ixd is not None or end_idx is not None:
+                start_ixd = 0 if start_ixd is None else start_ixd
+                end_idx = len(self) if end_idx is None else end_idx
                 self.all_segments = {k: v for k, v in self.all_segments.items() if start_ixd <= k <= end_idx}
             
         else:
