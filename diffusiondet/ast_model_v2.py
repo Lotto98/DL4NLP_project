@@ -4,6 +4,7 @@ from detectron2.modeling import Backbone
 from detectron2.layers import ShapeSpec
 from detectron2.modeling.backbone import BACKBONE_REGISTRY
 from detectron2.modeling.backbone.fpn import FPN
+from torch.nn import ReLU
 from transformers import ASTModel, ASTConfig
 
 class ASTBackboneMultiScale(Backbone):
@@ -15,12 +16,12 @@ class ASTBackboneMultiScale(Backbone):
         """
         super().__init__()
         self.ast_model = ast_model
-        self.ast_model
-        self.out_channels = 768  # AST layers
+        self.ast_model.layernorm.requires_grad_(False)
+        self.out_channels = 256  # AST layers
         self.out_features = out_features
         self.num_layers = ast_model.config.num_hidden_layers  # AST layers
         
-        self.layers = [3, 6, 9, 12]
+        self.layers = [2, 5, 9, 12]
         self.scales = [1, 2, 4, 8]
         self.divisibility = self.scales[-1]
         
@@ -32,10 +33,17 @@ class ASTBackboneMultiScale(Backbone):
         
         self.proj = torch.nn.ModuleList([
                             torch.nn.Sequential(*[
-                                torch.nn.AvgPool2d(kernel_size=1, stride=scale, padding=0),
-                                torch.nn.GroupNorm(1, self.out_channels),
+                                #torch.nn.AvgPool2d(kernel_size=1, stride=scale, padding=0),
+                                torch.nn.LayerNorm([self.out_channels, 
+                                                    (self.H_hidden + (self.divisibility - self.H_hidden % self.divisibility) ) // scale if (self.H_hidden % self.divisibility != 0) else (self.H_hidden // scale), 
+                                                    (self.W_hidden + (self.divisibility - self.W_hidden % self.divisibility) ) // scale if (self.W_hidden % self.divisibility != 0) else (self.W_hidden // scale)]),
                                 ]) for scale in self.scales
                             ])
+        
+        self.activations = torch.nn.ModuleList([
+                            ReLU() for _ in self.scales])
+        
+        self.iterations = 0
 
     def forward(self, x):
         """
@@ -57,9 +65,6 @@ class ASTBackboneMultiScale(Backbone):
             layer_output =  hidden_states[layer_index]
             B, L, C = layer_output.shape # B, L, 768
             
-            #get first two tokens
-            #tokens = layer_output[:, :2, :]
-            
             #remove first two tokens
             layer_output = layer_output[:, 2:, :]
             
@@ -67,34 +72,48 @@ class ASTBackboneMultiScale(Backbone):
             layer_output = layer_output.transpose(1, 2)
             layer_output = layer_output.view(B, C, self.H_hidden, self.W_hidden)
             
+            #residual connection
+            #x_down = F.interpolate(x.unsqueeze(1), size=(self.H_hidden, self.W_hidden) , mode='bicubic', align_corners=False)
+            #layer_output = self.activation(layer_output + x_down)
+            
             #padding layer output such that H and W are divisible by scale
-            if (self.H_hidden % self.divisibility != 0 or self.W_hidden % self.divisibility != 0):
-                layer_output = F.pad(layer_output, (
-                                        0, (self.divisibility - self.W_hidden % self.divisibility), 
-                                        0, (self.divisibility - self.H_hidden % self.divisibility)))
+            if (self.H_hidden % self.divisibility != 0):
+                new_H = (self.H_hidden + (self.divisibility - self.H_hidden % self.divisibility))
+            else:
+                new_H = self.H_hidden
+                
+            if self.W_hidden % self.divisibility != 0:
+                new_W = (self.W_hidden + (self.divisibility - self.W_hidden % self.divisibility))
+            else:
+                new_W = self.W_hidden
+            
+            if new_H != self.H_hidden or new_W != self.W_hidden:     
+                layer_output = F.interpolate(layer_output, size=(new_H, new_W), mode='bicubic', align_corners=False)
 
             #apply projection
+            layer_output = F.interpolate(layer_output, size=(new_H//self.scales[i], new_W//self.scales[i]) , mode='bicubic', align_corners=False)
             layer_output = self.proj[i](layer_output)
             
-            feature_maps[f"AST_{layer_index}"] = layer_output
-
-            #self.__out_channels = feature_maps[f"AST_{layer_index}"].shape[1]
+            #plot the layer output
+            #if self.iterations >= 500:
+            #    import matplotlib.pyplot as plt
+            #    plt.imshow(layer_output[0, 0].detach().cpu().numpy())
+            #    plt.show()
             
-            """
-                # padding to make H and W even
-                pad_input = (H % 2 == 1) or (W % 2 == 1)
-                if pad_input:
-                    x = F.pad(x, (0, 0, 0, W % 2, 0, H % 2))
-
-                x0 = x[:, 0::scale, 0::scale]  # B H/2 W/2
-                x1 = x[:, 1::scale, 0::scale]  # B H/2 W/2
-                x2 = x[:, 0::scale, 1::scale]  # B H/2 W/2
-                x3 = x[:, 1::scale, 1::scale]  # B H/2 W/2
-                x = torch.cat([x0, x1, x2, x3], -1)
-            """
-        
-        #for key in feature_maps:
-            #print(key, feature_maps[key].shape)
+            
+            # residual connection
+            #x_down = F.interpolate(x.unsqueeze(1), size=(new_H//self.scales[i], new_W//self.scales[i]) , mode='bicubic', align_corners=False)
+            #layer_output = self.activations[i](layer_output + x_down)
+            
+            #if self.iterations >= 500:
+            #    plt.imshow(x_down[0, 0].detach().cpu().numpy())
+            #    plt.show()
+                
+            #    plt.imshow(layer_output[0, 0].detach().cpu().numpy())
+            #    plt.show()
+            
+            feature_maps[f"AST_{layer_index}"] = layer_output
+            self.iterations += 1
         
         return feature_maps
 
@@ -108,18 +127,22 @@ def build_ASTModel_backbone(cfg, input_shape: ShapeSpec):
     """
     """
     
-    config = ASTConfig.from_pretrained(cfg.MODEL.AST.PRETRAINED_MODEL)
+    config = ASTConfig() #.from_pretrained(cfg.MODEL.AST.PRETRAINED_MODEL)
     
     #print(config.hidden_size)
         
     # Modifica la lunghezza massima
     config.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 #cfg.INPUT.SAMPLING_RATE
+    config.num_mel_bins = 168
+    config.hidden_size = 256
+    config.num_attention_heads = 8
     
-    model = ASTModel.from_pretrained(
-        cfg.MODEL.AST.PRETRAINED_MODEL, 
-        config=config,
-        ignore_mismatched_sizes=True
-    )
+    model = ASTModel(config)
+    #.from_pretrained(
+    #    cfg.MODEL.AST.PRETRAINED_MODEL, 
+    #    config=config,
+    #    ignore_mismatched_sizes=True
+    #)
     
     return ASTBackboneMultiScale(
         ast_model = model,

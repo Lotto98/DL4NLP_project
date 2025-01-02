@@ -27,7 +27,8 @@ from detectron2.checkpoint import DetectionCheckpointer
 from detectron2.config import get_cfg
 from detectron2.data import build_batch_data_loader
 from detectron2.engine import DefaultTrainer, default_argument_parser, default_setup, launch, create_ddp_model, \
-    AMPTrainer, SimpleTrainer, hooks, HookBase
+    AMPTrainer, SimpleTrainer, hooks, HookBase, default_writers
+from detectron2.utils.events import get_event_storage
 from detectron2.evaluation import COCOEvaluator, LVISEvaluator, verify_results
 from detectron2.solver.build import maybe_add_gradient_clipping
 from detectron2.modeling import build_model
@@ -61,7 +62,7 @@ class Trainer(DefaultTrainer):
 
         model = create_ddp_model(model, broadcast_buffers=False)
         self._trainer = (AMPTrainer if cfg.SOLVER.AMP.ENABLED else SimpleTrainer)(
-            model, data_loader, optimizer
+            model, data_loader, optimizer, zero_grad_before_forward=True
         )
 
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
@@ -83,6 +84,7 @@ class Trainer(DefaultTrainer):
         self.cfg = cfg
 
         self.register_hooks(self.build_hooks())
+        self._trainer._hooks = self._hooks
 
     @classmethod
     def build_model(cls, cfg):
@@ -274,7 +276,9 @@ class Trainer(DefaultTrainer):
         # some checkpoints may have more precise statistics than others.
         if comm.is_main_process():
             ret.append(hooks.PeriodicCheckpointer(self.checkpointer, cfg.SOLVER.CHECKPOINT_PERIOD))
-
+        
+        ret.append(GradientWriter(self.cfg.OUTPUT_DIR, self.model))
+        
         def test_and_save_results():
             self._last_eval_results = self.test(self.cfg, self.model)
             return self._last_eval_results
@@ -290,7 +294,66 @@ class Trainer(DefaultTrainer):
             # run writers in the end, so that evaluation metrics are written
             ret.append(hooks.PeriodicWriter(self.build_writers(), period=1))
         return ret
+    
+    def build_writers(self):
+        """
+        Build a list of writers to be used using :func:`default_writers()`.
+        If you'd like a different list of writers, you can overwrite it in
+        your trainer.
 
+        Returns:
+            list[EventWriter]: a list of :class:`EventWriter` objects.
+        """
+        return default_writers(self.cfg.OUTPUT_DIR, self.max_iter)
+
+
+class GradientWriter(hooks.HookBase):
+    
+    
+    def __init__(self, output_dir, model):
+        from torch.utils.tensorboard import SummaryWriter
+        
+        self.logger = logging.getLogger("detectron2.utils.events")
+        self.model = model
+        self.writer = SummaryWriter(log_dir=f'{output_dir}')
+        self.prev_weights={}
+    
+    def __do_gradient_norm(self, before=False):
+        
+        threshold=0
+        
+        for name, param in self.model.named_parameters():
+            if not param.requires_grad:
+                continue
+            
+            self.writer.add_scalar(f"weights/{name}", param.mean().item(), get_event_storage().iter)
+            
+            if name in self.prev_weights:
+                if abs(param.mean().item()-self.prev_weights[name]) <= threshold:
+                    self.logger.info(f"{name} has constant weights.")
+                    self.prev_weights[name] = param.mean().item()
+            else:
+                self.prev_weights[name] = param.mean().item()
+            
+            
+            """
+            if param.grad is None:
+                #self.logger.info(f"{name} has no gradient.")
+                continue
+            
+            self.writer.add_histogram(f"gradients/{name}", param.grad, get_event_storage().iter)
+            
+            param_norm = param.data.norm(2).item()
+            grad_norm = param.grad.norm(2).item()
+            if param_norm > 0:  # Avoid division by zero
+                ratio = grad_norm / param_norm
+                self.writer.add_scalar(f"gradients_norm/{name}", ratio, get_event_storage().iter)
+            """
+    def after_backward(self):
+        self.__do_gradient_norm(before=False)
+    
+    def close(self):
+        pass
 
 def setup(args):
     """
@@ -304,9 +367,9 @@ def setup(args):
     
     cfg.defrost()
     cfg.TEST.EVAL_PERIOD = cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
-    cfg.SOLVER.MAX_ITER = cfg.INPUT.TRAINING_DATASET_LENGTH  // cfg.INPUT.TOT_BATCH_SIZE * cfg.SOLVER.NUM_EPOCHS #stop training after num_epochs
+    cfg.SOLVER.MAX_ITER = (cfg.INPUT.TRAINING_DATASET_LENGTH  // cfg.INPUT.TOT_BATCH_SIZE) * cfg.SOLVER.NUM_EPOCHS #stop training after num_epochs
     
-    cfg.SOLVER.WARMUP_ITERS = 1 * (cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE) #warmup for one complete epoch
+    cfg.SOLVER.WARMUP_ITERS = 1000 #0 * (cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE) #warmup for one complete epoch
     
     #TODO: add SOLVER.STEPS here to be parametrized by MAX_ITER
     cfg.freeze()
@@ -326,7 +389,7 @@ def main(args):
         model = Trainer.build_model(cfg)
         kwargs = may_get_ema_checkpointer(cfg, model)
         
-        model_path = os.path.join(cfg.OUTPUT_DIR+"_now", "model_0007199.pth")
+        model_path = os.path.join(cfg.OUTPUT_DIR, "model_0000899.pth")
         
         if cfg.MODEL_EMA.ENABLED:
             EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(model_path, #cfg.MODEL.WEIGHTS,

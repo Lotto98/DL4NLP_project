@@ -1,10 +1,8 @@
 /DiffusionDet-main/
 /datasets_old
 /datasets
+/output_*
 /output
-/output_old
-/output_best
-/output_now
 /models
 /.idea
 /diffusiondet/pretrained_models

@@ -226,7 +226,7 @@ class RCNNHead(nn.Module):
             self.class_logits = nn.Linear(d_model, num_classes)
         else:
             self.class_logits = nn.Linear(d_model, num_classes + 1)
-        self.bboxes_delta = nn.Linear(d_model, 2) # 4) # layer finale for bbox regression (changed from 4 to 2 dimensions)
+        self.bboxes_delta = nn.Linear(d_model, 4)
         self.scale_clamp = scale_clamp
         self.bbox_weights = bbox_weights
 
@@ -304,10 +304,10 @@ class RCNNHead(nn.Module):
         ctr_y = boxes[:, 1] + 0.5 * heights
 
         wx, wy, ww, wh = self.bbox_weights
-        #dx = deltas[:, 0::2] / wx #dx = deltas[:, 0::4] / wx 
-        dy = deltas[:, 0::2] / wy
-        #dw = deltas[:, 1::2] / ww #dw = deltas[:, 2::4] / ww
-        dh = deltas[:, 1::2] / wh
+        #dx = deltas[:, 0::4] / wx 
+        dy = deltas[:, 1::4] / wy
+        #dw = deltas[:, 2::4] / ww
+        dh = deltas[:, 3::4] / wh
 
         # Prevent sending too large values into torch.exp()
         #dw = torch.clamp(dw, max=self.scale_clamp)

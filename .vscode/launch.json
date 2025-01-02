@@ -44,6 +44,21 @@
       "type": "debugpy",
       "request": "launch",
       "justMyCode": false,
+      "name": "Launch train_net.py --resume",
+      "program": "${workspaceFolder}/train_net.py",
+      "args": [
+        "--num-gpus",
+        "1",
+        "--config-file",
+        //"configs/diffdet.coco.res50.yaml"
+        "configs/diffdet.ami.ast.yaml",
+        "--resume"
+      ]
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "justMyCode": false,
       "name": "Launch train_net.py",
       "program": "${workspaceFolder}/train_net.py",
       "args": [

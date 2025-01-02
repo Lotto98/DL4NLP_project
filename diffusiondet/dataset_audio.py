@@ -164,19 +164,17 @@ class DiffusionDetAudioDataset(IterableDataset):
 
             new_items[new_segment]["time_pairs"].append(new_annotation)
             
-            """
-            if new_label[2] == 'E':
+            
+            if new_label[0] == 'M':
                 new_items[new_segment]["speaker_ids"].append(0)
-            elif new_label[2] == 'D':
+            elif new_label[0] == 'F':
                 new_items[new_segment]["speaker_ids"].append(1)
-            elif new_label[2] == 'O':
-                new_items[new_segment]["speaker_ids"].append(2)
             else:
-                raise ValueError(f"Speaker label {new_label[2]} not supported.")
-            """
+                raise ValueError(f"Speaker label {new_label[0]} not supported.")
+            
             new_items[new_segment]["text"].append(t)
             
-            new_items[new_segment]["speaker_ids"].append(0) # new_label forced to 0 = speach
+            #new_items[new_segment]["speaker_ids"].append(0) # new_label forced to 0 = speach
             
             max_boxes = max(max_boxes, len(new_items[new_segment]["time_pairs"]))
             
@@ -266,11 +264,13 @@ class DiffusionDetAudioDataset(IterableDataset):
         if name == "ami":
             self.annotations_per_audio = self.load_ami(split)
             
-            self.feature_extractor = ASTFeatureExtractor.from_pretrained(cfg.MODEL.AST.PRETRAINED_MODEL)
+            self.feature_extractor = ASTFeatureExtractor() #.from_pretrained(cfg.MODEL.AST.PRETRAINED_MODEL)
             
             # Modifica il tasso di campionamento e la lunghezza massima
             self.feature_extractor.sampling_rate = cfg.INPUT.SAMPLING_RATE
             self.feature_extractor.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 #* cfg.INPUT.SAMPLING_RATE
+            
+            self.feature_extractor.num_mel_bins = 168
             
             self.sample_rate = self.feature_extractor.sampling_rate
             self.seconds_per_segment = cfg.INPUT.SECONDS_PER_SEGMENT
@@ -301,7 +301,6 @@ class DiffusionDetAudioDataset(IterableDataset):
     @staticmethod
     def plot_spectrogram(spectrogram, 
                         time_pairs, speaker_ids,
-                        texts,
                         sample_rate,
                          title="Mel-Spectrogram"):
         
@@ -331,8 +330,8 @@ class DiffusionDetAudioDataset(IterableDataset):
         color_palette = plt.cm.get_cmap("spring", len(unique_speaker_ids))
         color_map = {speaker_id: color_palette(i) for i, speaker_id in enumerate(unique_speaker_ids)}
         speakers_already=[]
-        for (start_time, end_time), speaker_id, t in zip(time_pairs, speaker_ids, texts):
-            print(start_time, end_time, speaker_id, t)
+        for (start_time, end_time), speaker_id, in zip(time_pairs, speaker_ids):
+            #print(start_time, end_time, speaker_id, t)
             color = color_map.get(speaker_id, 'black')  # Default color is black if speaker_id not in color_map
             
             if speaker_id not in speakers_already:
@@ -358,6 +357,8 @@ class DiffusionDetAudioDataset(IterableDataset):
         plt.show() #.savefig("figure.png") #.show()
         
     def __getitem__(self, idx_segment: int):
+        
+        #idx_segment = 0 if idx_segment%2 == 0 else 1
         
         waveform_segments = self.audio_waveform_segments[self.all_segments[idx_segment]["audio_file"]]
         
@@ -421,36 +422,6 @@ class AudioEvaluator(DatasetEvaluator):
     def __init__(self, name, cfg, output_dir):
         super().__init__()
         
-        self.num_heads = cfg.MODEL.DiffusionDet.NUM_HEADS
-        self.num_classes = cfg.MODEL.DiffusionDet.NUM_CLASSES
-        
-        # Loss parameters:
-        class_weight = cfg.MODEL.DiffusionDet.CLASS_WEIGHT
-        giou_weight = cfg.MODEL.DiffusionDet.GIOU_WEIGHT
-        l1_weight = cfg.MODEL.DiffusionDet.L1_WEIGHT
-        no_object_weight = cfg.MODEL.DiffusionDet.NO_OBJECT_WEIGHT
-        self.deep_supervision = cfg.MODEL.DiffusionDet.DEEP_SUPERVISION
-        self.use_focal = cfg.MODEL.DiffusionDet.USE_FOCAL
-        self.use_fed_loss = cfg.MODEL.DiffusionDet.USE_FED_LOSS
-        self.use_nms = cfg.MODEL.DiffusionDet.USE_NMS
-
-        # Build Criterion.
-        matcher = HungarianMatcherDynamicK(
-            cfg=cfg, cost_class=class_weight, cost_bbox=l1_weight, cost_giou=giou_weight, use_focal=self.use_focal
-        )
-        weight_dict = {"loss_ce": class_weight, "loss_bbox": l1_weight, "loss_giou": giou_weight}
-        if self.deep_supervision:
-            aux_weight_dict = {}
-            for i in range(self.num_heads - 1):
-                aux_weight_dict.update({k + f"_{i}": v for k, v in weight_dict.items()})
-            weight_dict.update(aux_weight_dict)
-
-        losses = ["labels", "boxes"]
-
-        self.criterion = SetCriterionDynamicK(
-            cfg=cfg, num_classes=self.num_classes, matcher=matcher, weight_dict=weight_dict, eos_coef=no_object_weight,
-            losses=losses, use_focal=self.use_focal,)
-        
         self.iou_thresholds = [0.5, 0.75]
         self.results = []
     
@@ -464,38 +435,36 @@ class AudioEvaluator(DatasetEvaluator):
     
     def process(self, inputs, outputs):
         
-        """formatted_inputs = {}
-        formatted_outputs = []
-        
         for i, o in zip(inputs, outputs):
             
-            if False:
-                times=self._bb_to_time_pairs(i["instances"].gt_boxes.tensor)
+            if True:
+                times_1 = self._bb_to_time_pairs(i["instances"].gt_boxes.tensor)
                 
                 DiffusionDetAudioDataset.plot_spectrogram(
                     i["image"], 
-                    times, 
+                    times_1, 
                     i["instances"].gt_classes.tolist(),
-                    i["instances"].texts, 
                     16000, 
                     title=f"Mel-Spectrogram for gt segment {i["segment_id_for_waveform"]}"
                 )
                 
-                times = self._bb_to_time_pairs(o["instances"].pred_boxes.tensor)
+                times_2 = self._bb_to_time_pairs(o["instances"].pred_boxes.tensor)
                 
                 DiffusionDetAudioDataset.plot_spectrogram(
                     i["image"], 
-                    times, 
+                    times_2, 
                     o["instances"].pred_classes.tolist(), 
-                    i["instances"].texts,
                     16000, 
                     title=f"Mel-Spectrogram for pred segment {i["segment_id_for_waveform"]}"
-                )"""
+                )
+                
+                if len(times_1) != len(times_2):
+                    print("WARNING: different number of boxes", len(times_1), len(times_2))
         
         for input, output in zip(inputs, outputs):
             gt_boxes = input["instances"].gt_boxes.tensor.numpy()
-            pred_boxes = output["instances"].pred_boxes.tensor.numpy()
-            scores = output["instances"].scores.numpy()
+            pred_boxes = output["instances"].pred_boxes.tensor.cpu().numpy()
+            scores = output["instances"].scores.cpu().numpy()
 
             # Match ground truth boxes to predicted boxes here
             self.results.append(self.evaluate_boxes(gt_boxes, pred_boxes, scores))

@@ -323,12 +323,16 @@ class DiffusionDet(nn.Module):
         features = list()
         for f in self.in_features:
             feature = src[f]
+            #from matplotlib import pyplot as plt
+            #plt.imshow(feature.cpu().detach().numpy()[0,0])
+            #plt.show()
             features.append(feature)
 
         # Prepare Proposals.
         if not self.training:
             results, o = self.ddim_sample(batched_inputs, features, images_whwh, images)
             
+            """
             gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
             targets, _, _, _ = self.prepare_targets(gt_instances)
             loss_dict = self.criterion(o, targets)
@@ -354,6 +358,7 @@ class DiffusionDet(nn.Module):
             metrics_file = f"{self.out_dir}/metrics_val.json"
             with open(metrics_file, "a") as f:
                 f.write(json.dumps(loss_dict) + "\n")
+            """
             
             return results
 

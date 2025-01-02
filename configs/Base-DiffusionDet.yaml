@@ -1,11 +1,11 @@
 MODEL:
-  DEVICE: "cpu"
+  DEVICE: "cuda"
   META_ARCHITECTURE: "DiffusionDet"
   AST:
-    OUT_FEATURES: ["AST_3", "AST_6", "AST_9", "AST_12"]
+    OUT_FEATURES: ["AST_2", "AST_5", "AST_9", "AST_12"]
     OUT_CHANNELS: 768
   FPN:
-    IN_FEATURES: ["AST_3", "AST_6", "AST_9", "AST_12"] #["simple1", "simple2", "simple3", "simple4"]
+    IN_FEATURES: ["AST_2", "AST_5", "AST_9", "AST_12"] #["simple1", "simple2", "simple3", "simple4"]
     OUT_CHANNELS: 256
   ROI_HEADS:
     IN_FEATURES:  ['p0', 'p1', 'p2', 'p3']
@@ -16,9 +16,9 @@ MODEL:
 SOLVER:
   NUM_EPOCHS: 50
   CHECKPOINT_PERIOD: 900
-  BASE_LR: 1e-06
+  BASE_LR: 2.5e-05
   STEPS: (210000, 250000)
-  WARMUP_FACTOR: 0.001 #1.0 / 1000
+  WARMUP_FACTOR: 0.01 #1.0 / 1000
   #WARMUP_ITERS: 1000
   #WARMUP_METHOD: "constant"
   WEIGHT_DECAY: 0.0001
