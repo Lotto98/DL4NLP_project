@@ -17,6 +17,7 @@ import weakref
 from typing import Any, Dict, List, Set
 import logging
 from collections import OrderedDict
+import pandas as pd
 
 import torch
 from fvcore.nn.precise_bn import get_bn_modules
@@ -222,6 +223,7 @@ class Trainer(DefaultTrainer):
                 results = cls.test(cfg, model, evaluators=evaluators)
         else:
             results = cls.test(cfg, model, evaluators=evaluators)
+            
         return results
 
     @classmethod
@@ -281,6 +283,16 @@ class Trainer(DefaultTrainer):
         
         def test_and_save_results():
             self._last_eval_results = self.test(self.cfg, self.model)
+            results_df = {x: [y] for x, y in self._last_eval_results.items()}
+            results_df = pd.DataFrame.from_dict(results_df)
+            
+            # append to csv
+            csv_path = os.path.join(self.cfg.OUTPUT_DIR, "evaluator_metrics.csv")
+            if os.path.exists(csv_path):
+                results_df.to_csv(csv_path, mode='a', header=False)
+            else:
+                results_df.to_csv(csv_path)
+            
             return self._last_eval_results
 
         # Do evaluation after checkpointer, because then if it fails,
@@ -366,7 +378,7 @@ def setup(args):
     cfg.merge_from_list(args.opts)
     
     cfg.defrost()
-    cfg.TEST.EVAL_PERIOD = cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
+    cfg.TEST.EVAL_PERIOD = 1 # = cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
     cfg.SOLVER.MAX_ITER = (cfg.INPUT.TRAINING_DATASET_LENGTH  // cfg.INPUT.TOT_BATCH_SIZE) * cfg.SOLVER.NUM_EPOCHS #stop training after num_epochs
     
     cfg.SOLVER.WARMUP_ITERS = 1000 #0 * (cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE) #warmup for one complete epoch
