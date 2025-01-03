@@ -15,6 +15,7 @@ from detectron2.structures import Instances, Boxes
 from detectron2.evaluation import DatasetEvaluator
 import os
 from torch.utils.data import IterableDataset
+import torch.nn.functional as F
 
 from sklearn.preprocessing import LabelEncoder
 
@@ -270,7 +271,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             self.feature_extractor.sampling_rate = cfg.INPUT.SAMPLING_RATE
             self.feature_extractor.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 #* cfg.INPUT.SAMPLING_RATE
             
-            self.feature_extractor.num_mel_bins = 168
+            self.feature_extractor.num_mel_bins = 166
             
             self.sample_rate = self.feature_extractor.sampling_rate
             self.seconds_per_segment = cfg.INPUT.SECONDS_PER_SEGMENT
@@ -379,8 +380,12 @@ class DiffusionDetAudioDataset(IterableDataset):
         #    title=f"Mel-Spectrogram for segment {idx_segment}"
         #)
         
+        # to make swin work
+        # features = F.interpolate(features.unsqueeze(0), size=(1024, 160), mode='bicubic', align_corners=False)
+        features = F.pad(features, (0, 0, 0, 26), value=0)
+        
         return {
-            "image": features.squeeze(0),
+            "image": features.squeeze(0), #torch.cat([features, features, features], dim=0)
             "instances": Instances(
                 image_size = features.shape[-2:],
                 gt_boxes = Boxes(torch.tensor([[0, st, features.shape[-1], et] for st, et in self.all_segments[idx_segment]["time_pairs"]])),

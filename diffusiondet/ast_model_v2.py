@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from detectron2.modeling import Backbone
 from detectron2.layers import ShapeSpec
 from detectron2.modeling.backbone import BACKBONE_REGISTRY
-from detectron2.modeling.backbone.fpn import FPN
+from detectron2.modeling.backbone.fpn import FPN, LastLevelMaxPool
 from torch.nn import ReLU
 from transformers import ASTModel, ASTConfig
 
@@ -34,7 +34,8 @@ class ASTBackboneMultiScale(Backbone):
         self.proj = torch.nn.ModuleList([
                             torch.nn.Sequential(*[
                                 #torch.nn.AvgPool2d(kernel_size=1, stride=scale, padding=0),
-                                torch.nn.LayerNorm([self.out_channels, 
+                                torch.nn.Conv2d(self.out_channels, self.out_channels*scale, kernel_size=scale, stride=scale, padding=0),
+                                torch.nn.LayerNorm([self.out_channels*scale, 
                                                     (self.H_hidden + (self.divisibility - self.H_hidden % self.divisibility) ) // scale if (self.H_hidden % self.divisibility != 0) else (self.H_hidden // scale), 
                                                     (self.W_hidden + (self.divisibility - self.W_hidden % self.divisibility) ) // scale if (self.W_hidden % self.divisibility != 0) else (self.W_hidden // scale)]),
                                 ]) for scale in self.scales
@@ -91,7 +92,7 @@ class ASTBackboneMultiScale(Backbone):
                 layer_output = F.interpolate(layer_output, size=(new_H, new_W), mode='bicubic', align_corners=False)
 
             #apply projection
-            layer_output = F.interpolate(layer_output, size=(new_H//self.scales[i], new_W//self.scales[i]) , mode='bicubic', align_corners=False)
+            #layer_output = F.interpolate(layer_output, size=(new_H//self.scales[i], new_W//self.scales[i]) , mode='bicubic', align_corners=False)
             layer_output = self.proj[i](layer_output)
             
             #plot the layer output
@@ -119,7 +120,7 @@ class ASTBackboneMultiScale(Backbone):
 
     def output_shape(self):
         return {
-            f"AST_{layer_id}": ShapeSpec(channels=self.out_channels, stride=scale) for scale, layer_id  in zip(self.scales, self.layers)
+            f"AST_{layer_id}": ShapeSpec(channels=self.out_channels*scale, stride=scale) for scale, layer_id  in zip(self.scales, self.layers)
         }
     
 @BACKBONE_REGISTRY.register()
@@ -132,8 +133,8 @@ def build_ASTModel_backbone(cfg, input_shape: ShapeSpec):
     #print(config.hidden_size)
         
     # Modifica la lunghezza massima
-    config.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 #cfg.INPUT.SAMPLING_RATE
-    config.num_mel_bins = 168
+    config.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 + 26 #cfg.INPUT.SAMPLING_RATE
+    config.num_mel_bins = 166
     config.hidden_size = 256
     config.num_attention_heads = 8
     
@@ -164,5 +165,6 @@ def build_ASTModel_backbone_fpn(cfg, input_shape: ShapeSpec):
         out_channels=out_channels,
         norm=cfg.MODEL.FPN.NORM,
         fuse_type=cfg.MODEL.FPN.FUSE_TYPE,
+        #top_block=LastLevelMaxPool(),
     )
     return backbone

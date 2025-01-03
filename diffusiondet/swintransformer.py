@@ -725,6 +725,7 @@ def build_swintransformer_backbone(cfg, input_shape):
         drop_path_rate=config['drop_path_rate'],
         out_indices=out_indices,
         frozen_stages=-1,
+        in_chans=1,
         use_checkpoint=cfg.MODEL.SWIN.USE_CHECKPOINT
     )
     # print('Initializing', config['pretrained'])
