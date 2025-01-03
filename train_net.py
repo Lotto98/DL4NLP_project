@@ -378,7 +378,7 @@ def setup(args):
     cfg.merge_from_list(args.opts)
     
     cfg.defrost()
-    cfg.TEST.EVAL_PERIOD = 1 # = cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
+    cfg.TEST.EVAL_PERIOD = cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
     cfg.SOLVER.MAX_ITER = (cfg.INPUT.TRAINING_DATASET_LENGTH  // cfg.INPUT.TOT_BATCH_SIZE) * cfg.SOLVER.NUM_EPOCHS #stop training after num_epochs
     
     cfg.SOLVER.WARMUP_ITERS = 1000 #0 * (cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE) #warmup for one complete epoch
