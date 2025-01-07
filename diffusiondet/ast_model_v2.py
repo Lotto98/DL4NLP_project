@@ -128,7 +128,7 @@ def build_ASTModel_backbone(cfg, input_shape: ShapeSpec):
     """
     """
     
-    config = ASTConfig() #.from_pretrained(cfg.MODEL.AST.PRETRAINED_MODEL)
+    config = ASTConfig().from_pretrained(cfg.MODEL.AST.PRETRAINED_MODEL)
     
     #print(config.hidden_size)
         
@@ -138,12 +138,11 @@ def build_ASTModel_backbone(cfg, input_shape: ShapeSpec):
     config.hidden_size = 256
     config.num_attention_heads = 8
     
-    model = ASTModel(config)
-    #.from_pretrained(
-    #    cfg.MODEL.AST.PRETRAINED_MODEL, 
-    #    config=config,
-    #    ignore_mismatched_sizes=True
-    #)
+    model = ASTModel(config).from_pretrained(
+        cfg.MODEL.AST.PRETRAINED_MODEL, 
+        config=config,
+        ignore_mismatched_sizes=True
+    )
     
     return ASTBackboneMultiScale(
         ast_model = model,

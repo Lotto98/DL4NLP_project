@@ -141,7 +141,7 @@ class Trainer(DefaultTrainer):
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
         
-        dataset = DiffusionDetAudioDataset(name="ami", split="validation", cfg=cfg, start_ixd=0, end_idx=50)
+        dataset = DiffusionDetAudioDataset(name="ami", split="validation", cfg=cfg)
         
         #from tqdm import tqdm 
         
@@ -178,7 +178,7 @@ class Trainer(DefaultTrainer):
                     lr = lr * cfg.SOLVER.BACKBONE_MULTIPLIER_AST
                     #print("lr bottom_up", lr)
                 else:
-                    raise NotImplementedError(f"no backbone type {key}")
+                    lr = lr * cfg.SOLVER.BACKBONE_MULTIPLIER_AST
             params += [{"params": [value], "lr": lr, "weight_decay": weight_decay}]
 
         def maybe_add_full_model_gradient_clipping(optim):  # optim: the optimizer class
@@ -299,7 +299,7 @@ class Trainer(DefaultTrainer):
         # we can use the saved checkpoint to debug.
         ret.append(hooks.EvalHook(cfg.TEST.EVAL_PERIOD, test_and_save_results))
         
-        ret.append(hooks.BestCheckpointer(cfg.TEST.EVAL_PERIOD, self.checkpointer, "BHO", "max"))
+        ret.append(hooks.BestCheckpointer(cfg.TEST.EVAL_PERIOD, self.checkpointer, "AP@0.75", "max"))
 
         if comm.is_main_process():
             # Here the default print/log frequency of each writer is used.
@@ -378,10 +378,10 @@ def setup(args):
     cfg.merge_from_list(args.opts)
     
     cfg.defrost()
-    cfg.TEST.EVAL_PERIOD = cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
+    cfg.TEST.EVAL_PERIOD = 100 #cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
     cfg.SOLVER.MAX_ITER = (cfg.INPUT.TRAINING_DATASET_LENGTH  // cfg.INPUT.TOT_BATCH_SIZE) * cfg.SOLVER.NUM_EPOCHS #stop training after num_epochs
     
-    cfg.SOLVER.WARMUP_ITERS = 1000 #0 * (cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE) #warmup for one complete epoch
+    cfg.SOLVER.WARMUP_ITERS = 10000 #0 * (cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE) #warmup for one complete epoch
     
     #TODO: add SOLVER.STEPS here to be parametrized by MAX_ITER
     cfg.freeze()

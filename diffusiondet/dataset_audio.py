@@ -442,7 +442,7 @@ class AudioEvaluator(DatasetEvaluator):
         
         for i, o in zip(inputs, outputs):
             
-            if True:
+            if False:
                 times_1 = self._bb_to_time_pairs(i["instances"].gt_boxes.tensor)
                 
                 DiffusionDetAudioDataset.plot_spectrogram(
