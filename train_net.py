@@ -340,13 +340,14 @@ class GradientWriter(hooks.HookBase):
             
             self.writer.add_scalar(f"weights/{name}", param.mean().item(), get_event_storage().iter)
             
+            """
             if name in self.prev_weights:
                 if abs(param.mean().item()-self.prev_weights[name]) <= threshold:
                     self.logger.info(f"{name} has constant weights.")
                     self.prev_weights[name] = param.mean().item()
             else:
                 self.prev_weights[name] = param.mean().item()
-            
+            """
             
             """
             if param.grad is None:
@@ -378,7 +379,7 @@ def setup(args):
     cfg.merge_from_list(args.opts)
     
     cfg.defrost()
-    cfg.TEST.EVAL_PERIOD = 100 #cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
+    cfg.TEST.EVAL_PERIOD = 5000 #cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE #test every epoch
     cfg.SOLVER.MAX_ITER = (cfg.INPUT.TRAINING_DATASET_LENGTH  // cfg.INPUT.TOT_BATCH_SIZE) * cfg.SOLVER.NUM_EPOCHS #stop training after num_epochs
     
     cfg.SOLVER.WARMUP_ITERS = 10000 #0 * (cfg.INPUT.TRAINING_DATASET_LENGTH // cfg.INPUT.TOT_BATCH_SIZE) #warmup for one complete epoch
@@ -401,7 +402,7 @@ def main(args):
         model = Trainer.build_model(cfg)
         kwargs = may_get_ema_checkpointer(cfg, model)
         
-        model_path = os.path.join(cfg.OUTPUT_DIR, "model_0000899.pth")
+        model_path = os.path.join(cfg.OUTPUT_DIR, "model_0002699.pth")
         
         if cfg.MODEL_EMA.ENABLED:
             EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(model_path, #cfg.MODEL.WEIGHTS,
