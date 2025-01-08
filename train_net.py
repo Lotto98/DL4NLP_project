@@ -340,14 +340,13 @@ class GradientWriter(hooks.HookBase):
             
             self.writer.add_scalar(f"weights/{name}", param.mean().item(), get_event_storage().iter)
             
-            """
             if name in self.prev_weights:
                 if abs(param.mean().item()-self.prev_weights[name]) <= threshold:
                     self.logger.info(f"{name} has constant weights.")
                     self.prev_weights[name] = param.mean().item()
             else:
                 self.prev_weights[name] = param.mean().item()
-            """
+            
             
             """
             if param.grad is None:
@@ -402,7 +401,7 @@ def main(args):
         model = Trainer.build_model(cfg)
         kwargs = may_get_ema_checkpointer(cfg, model)
         
-        model_path = os.path.join(cfg.OUTPUT_DIR, "model_0002699.pth")
+        model_path = os.path.join(cfg.OUTPUT_DIR, "model_0000899.pth")
         
         if cfg.MODEL_EMA.ENABLED:
             EMADetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR, **kwargs).resume_or_load(model_path, #cfg.MODEL.WEIGHTS,
