@@ -243,12 +243,12 @@ class DiffusionDet(nn.Module):
                   c * pred_noise + \
                   sigma * noise
 
-            img = constant_box_cxcywh(img, 0, self.scale)
+            #img = constant_box_cxcywh(img, 0, self.scale)
 
             if self.box_renewal:  # filter
                 # replenish with randn boxes
                 img = torch.cat((img, torch.randn(1, self.num_proposals - num_remain, 4, device=img.device)), dim=1)
-                img = constant_box_cxcywh(img, 0, self.scale)
+                #img = constant_box_cxcywh(img, 0, self.scale)
             if self.use_ensemble and self.sampling_timesteps > 1:
                 # for Non-Maximum Suppression
                 box_pred_per_image, scores_per_image, labels_per_image = self.inference(outputs_class[-1],

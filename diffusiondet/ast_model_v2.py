@@ -17,7 +17,7 @@ class ASTBackboneMultiScale(Backbone):
         super().__init__()
         self.ast_model = ast_model
         self.ast_model.layernorm.requires_grad_(False)
-        self.out_channels = 256  # AST layers
+        self.out_channels = 768 #256  # AST layers
         self.out_features = out_features
         self.num_layers = ast_model.config.num_hidden_layers  # AST layers
         
@@ -135,8 +135,8 @@ def build_ASTModel_backbone(cfg, input_shape: ShapeSpec):
     # Modifica la lunghezza massima
     config.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 + 26 #cfg.INPUT.SAMPLING_RATE
     config.num_mel_bins = 166
-    config.hidden_size = 256
-    config.num_attention_heads = 8
+    #config.hidden_size = 256
+    #config.num_attention_heads = 8
     
     model = ASTModel(config).from_pretrained(
         cfg.MODEL.AST.PRETRAINED_MODEL, 

@@ -27,7 +27,7 @@ def constant_box_xyxy(x_xyxy, min_value_xyxy, max_value_xyxy):
     return __constant_box(x_xyxy, min_value_xyxy, max_value_xyxy)
 
 def constant_box_cxcywh(x_cxcywh, y_center , scale ):
-    return __constant_box(x_cxcywh, y_center, scale) # make 2 dimension constant as 0 and image_height
+    return __constant_box(x_cxcywh, y_center, scale) # make 2 dimension constant as 0 and image_width
 
 # modified from torchvision to also return the union
 def box_iou(boxes1, boxes2):
