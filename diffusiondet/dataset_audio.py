@@ -285,6 +285,8 @@ class DiffusionDetAudioDataset(IterableDataset):
             
             self.audio_generator()
             
+            #self.plot_statistics()
+            
             print("- sampling rate:", self.feature_extractor.sampling_rate)
             print("- max length:", self.feature_extractor.max_length)
             print("- max boxes per segment", self.max_boxes)
@@ -356,6 +358,19 @@ class DiffusionDetAudioDataset(IterableDataset):
         plt.ylabel("Mel-spectrogram bins")
         plt.tight_layout()
         plt.show() #.savefig("figure.png") #.show()
+    
+    def plot_statistics(self):
+        
+        statistics = { n_boxes:0 for n_boxes in range(0, self.max_boxes+1) }
+        
+        for _, segment in self.all_segments.items():
+            l = len(segment["time_pairs"])
+            statistics[l] += 1
+        
+        print("Statistics for the number of boxes per segment")
+        
+        plt.bar(statistics.keys(), statistics.values())
+        plt.savefig("boxes_per_segment.png")
         
     def __getitem__(self, idx_segment: int):
         
@@ -371,14 +386,16 @@ class DiffusionDetAudioDataset(IterableDataset):
         )["input_values"]
         
         
-        #self.plot_spectrogram(
-        #    features, 
-        #    self.all_segments[idx_segment]["time_pairs"], 
-        #    self.all_segments[idx_segment]["speaker_ids"],
-        #    self.all_segments[idx_segment]["text"], 
-        #    self.sample_rate, 
-        #    title=f"Mel-Spectrogram for segment {idx_segment}"
-        #)
+        self.plot_spectrogram(
+            features, 
+            self.all_segments[idx_segment]["time_pairs"], 
+            self.all_segments[idx_segment]["speaker_ids"],
+            #self.all_segments[idx_segment]["text"], 
+            self.sample_rate, 
+            title=f"Mel-Spectrogram for segment {idx_segment}"
+        )
+        
+        print(self.all_segments[idx_segment])
         
         # to make swin work
         # features = F.interpolate(features.unsqueeze(0), size=(1024, 160), mode='bicubic', align_corners=False)
