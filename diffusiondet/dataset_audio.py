@@ -71,9 +71,9 @@ class DiffusionDetAudioDataset(IterableDataset):
             save_image(item["image"].unsqueeze(0), image_file)
             
             if item["audio_name"] not in audio_dict:
-                audio_dict[item["audio_name"]] = []
+                audio_dict[item["audio_name"]] = [idx, idx]
             
-            audio_dict[item["audio_name"]].append(idx)
+            audio_dict[item["audio_name"]][1] = idx
                 
         json_file = os.path.join(path, f"audio_dict_{self.split}.json")
         with open(json_file, "w") as f:
