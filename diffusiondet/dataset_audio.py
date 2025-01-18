@@ -53,6 +53,8 @@ class DiffusionDetAudioDataset(IterableDataset):
         os.makedirs(path_labels, exist_ok=True)
         os.makedirs(path_images, exist_ok=True)
         
+        audio_dict = {}
+        
         for idx in trange(len(self)):
             item = self.__getitem__(idx)
             
@@ -67,6 +69,15 @@ class DiffusionDetAudioDataset(IterableDataset):
                     f.write(f"{label} {box[0]} {box[1]} {box[2]} {box[3]} \n")
             
             save_image(item["image"].unsqueeze(0), image_file)
+            
+            if item["audio_name"] not in audio_dict:
+                audio_dict[item["audio_name"]] = []
+            
+            audio_dict[item["audio_name"]].append(idx)
+                
+        json_file = os.path.join(path, f"audio_dict_{self.split}.json")
+        with open(json_file, "w") as f:
+            json.dump(audio_dict, f)
     
     def segments_generator(self, idx_audio):
         # Copy dataset_dict to avoid modifying the original one
