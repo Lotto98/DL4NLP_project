@@ -45,7 +45,7 @@ class DiffusionDetAudioDataset(IterableDataset):
     def to_yolo_format(self):
         from torchvision.utils import save_image
         
-        path = "dataset_yolo/ami"
+        path = "datasets/ami_yolo"
         
         path_labels = os.path.join(path, f"labels/{self.split}")
         path_images = os.path.join(path, f"images/{self.split}")

@@ -9,7 +9,7 @@ if __name__ == "__main__":
     
     
     #create a yaml file for the dataset
-    yaml_file = f"dataset_yolo/ami.yaml"
+    yaml_file = f"datasets/ami_yolo/ami.yaml"
     
     content =f"""
 path: dataset_yolo/ami # dataset root dir
