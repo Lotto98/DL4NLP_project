@@ -8,3 +8,4 @@
 /diffusiondet/pretrained_models
 /diffusiondet/__pycache__
 prepare_dataset.log
+dataset_yolo

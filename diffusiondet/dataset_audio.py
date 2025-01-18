@@ -17,7 +17,9 @@ import os
 from torch.utils.data import IterableDataset
 import torch.nn.functional as F
 
-from sklearn.preprocessing import LabelEncoder
+from .util.box_ops import box_xyxy_to_cxcywh
+
+#from sklearn.preprocessing import LabelEncoder
 
 from tqdm import trange
 
@@ -39,6 +41,32 @@ class DiffusionDetAudioDataset(IterableDataset):
             annotation["file_name"] = os.path.join(audio_root, f"{file_name}.wav")
     
         return annotations
+    
+    def to_yolo_format(self):
+        from torchvision.utils import save_image
+        
+        path = "dataset_yolo/ami"
+        
+        path_labels = os.path.join(path, f"labels/{self.split}")
+        path_images = os.path.join(path, f"images/{self.split}")
+        
+        os.makedirs(path_labels, exist_ok=True)
+        os.makedirs(path_images, exist_ok=True)
+        
+        for idx in trange(len(self)):
+            item = self.__getitem__(idx)
+            
+            txt_file = os.path.join(path_labels, f"{idx}.txt")
+            image_file = os.path.join(path_images, f"{idx}.png")
+            
+            with open(txt_file, "w") as f:
+                for box, label in zip(item["instances"].gt_boxes.tensor, item["instances"].gt_classes):
+                    h,w = item["instances"].image_size
+                    box = box/torch.tensor([w,h,w,h], dtype=torch.float32)
+                    box = box_xyxy_to_cxcywh(box)
+                    f.write(f"{label} {box[0]} {box[1]} {box[2]} {box[3]} \n")
+            
+            save_image(item["image"].unsqueeze(0), image_file)
     
     def segments_generator(self, idx_audio):
         # Copy dataset_dict to avoid modifying the original one
@@ -91,7 +119,7 @@ class DiffusionDetAudioDataset(IterableDataset):
                 
                 assert new_start_time < new_end_time, f"start time {new_start_time} must be less than end time {new_end_time}"
                 
-                new_annotations.append([new_start_time*100, new_end_time*100]) # * 100 to convert in correct scale for spectogram
+                new_annotations.append([new_start_time*99.818181, new_end_time*99.818181]) # * 100 to convert in correct scale for spectogram
                 new_labels.append(speaker_id)
                 new_segments.append(segment_index)
                 new_texts.append(text)
@@ -265,19 +293,17 @@ class DiffusionDetAudioDataset(IterableDataset):
         if name == "ami":
             self.annotations_per_audio = self.load_ami(split)
             
-            self.feature_extractor = ASTFeatureExtractor() #.from_pretrained(cfg.MODEL.AST.PRETRAINED_MODEL)
-            
-            # Modifica il tasso di campionamento e la lunghezza massima
-            self.feature_extractor.sampling_rate = cfg.INPUT.SAMPLING_RATE
-            self.feature_extractor.max_length = cfg.INPUT.SECONDS_PER_SEGMENT * 100 #* cfg.INPUT.SAMPLING_RATE
-            
-            self.feature_extractor.num_mel_bins = 166
+            self.feature_extractor = ASTFeatureExtractor(sampling_rate=cfg.INPUT.SAMPLING_RATE,
+                                                        max_length=1126,#cfg.INPUT.SECONDS_PER_SEGMENT * 100 + 26,
+                                                        num_mel_bins=166,
+                                                        )
             
             self.sample_rate = self.feature_extractor.sampling_rate
             self.seconds_per_segment = cfg.INPUT.SECONDS_PER_SEGMENT
             
             #self.label_encoder = LabelEncoder()
             self.is_training = (split == "train")
+            self.split = split
                 
             self.audio_waveform_segments = {}
             
@@ -385,21 +411,19 @@ class DiffusionDetAudioDataset(IterableDataset):
             sampling_rate=self.sample_rate
         )["input_values"]
         
-        
-        self.plot_spectrogram(
-            features, 
-            self.all_segments[idx_segment]["time_pairs"], 
-            self.all_segments[idx_segment]["speaker_ids"],
-            #self.all_segments[idx_segment]["text"], 
-            self.sample_rate, 
-            title=f"Mel-Spectrogram for segment {idx_segment}"
-        )
-        
-        print(self.all_segments[idx_segment])
+        #self.plot_spectrogram(
+        #    features, 
+        #    self.all_segments[idx_segment]["time_pairs"], 
+        #    self.all_segments[idx_segment]["speaker_ids"],
+        #    #self.all_segments[idx_segment]["text"], 
+        #    self.sample_rate, 
+        #    title=f"Mel-Spectrogram for segment {idx_segment}"
+        #)
+        #print(self.all_segments[idx_segment]["time_pairs"])
         
         # to make swin work
         # features = F.interpolate(features.unsqueeze(0), size=(1024, 160), mode='bicubic', align_corners=False)
-        features = F.pad(features, (0, 0, 0, 26), value=0)
+        #features = F.pad(features, (0, 0, 0, 26), value=0)
         
         return {
             "image": features.squeeze(0), #torch.cat([features, features, features], dim=0)
