@@ -35,7 +35,7 @@ def yolo_inference(model_path:str) -> Results:
     
     for i in range(0, len(file_names), batch):  # Process 10 images at a time
         batch_files = file_names[i:i+batch]
-        results = model.predict(batch_files, batch=batch, conf=0.000001)
+        results = model.predict(batch_files, batch=batch, conf=0.01, iou=0.2, agnostic_nms=True)
         for r in results:
             r=r.to("cpu")
             total_results.append(r)
@@ -81,13 +81,26 @@ def post_process_yolo(resulted_objects: list[Results] = [],
         boxes = r.boxes.xyxy 
         preds = r.boxes.cls
         
+        print(boxes)
+        
+        boxes, indexes = torch.sort(boxes, dim=0)
+        preds = preds[indexes]
+        
+        print(boxes)
+        
         audio_name = get_audio_file(segment_id, audio_dict)
         starting_segment, ending_segment = audio_dict[audio_name]
-        waveform = audios[audio_name]
+        waveform = audios[audio_name].squeeze(0)
+        
+        print(audio_name, starting_segment, ending_segment)
         
         for box, pred in zip(boxes, preds):
-            start = ((box[0] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
-            end = ((box[2] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
+            
+            print(box)
+            
+            start = ((box[1] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
+            end = ((box[3] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
+            print(start/sample_rate, end/sample_rate)
             segment = waveform[int(start):int(end)]
             
             transcription = whisper(segment.numpy())
