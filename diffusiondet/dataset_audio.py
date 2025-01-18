@@ -387,16 +387,27 @@ class DiffusionDetAudioDataset(IterableDataset):
     
     def plot_statistics(self):
         
-        statistics = { n_boxes:0 for n_boxes in range(0, self.max_boxes+1) }
+        box_count_distribution = { n_boxes:0 for n_boxes in range(0, self.max_boxes+1) }
+        labels_count = {0:0, 1:0}
         
         for _, segment in self.all_segments.items():
             l = len(segment["time_pairs"])
-            statistics[l] += 1
+            box_count_distribution[l] += 1
+            for label in segment["speaker_ids"]:
+                labels_count[label] += 1
         
         print("Statistics for the number of boxes per segment")
         
-        plt.bar(statistics.keys(), statistics.values())
-        plt.savefig("boxes_per_segment.png")
+        plt.bar(box_count_distribution.keys(), box_count_distribution.values())
+        plt.show()
+        
+        print("Statistics for the number of labels per segment")
+        
+        plt.bar(labels_count.keys(), labels_count.values())
+        plt.show()
+        
+        
+        #plt.savefig("boxes_per_segment.png")
         
     def __getitem__(self, idx_segment: int):
         
