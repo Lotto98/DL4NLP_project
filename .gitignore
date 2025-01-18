@@ -9,3 +9,4 @@
 /diffusiondet/__pycache__
 prepare_dataset.log
 dataset_yolo
+/runs
