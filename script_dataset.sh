@@ -13,3 +13,4 @@ conda activate DL4NLP
 
 #esegui il tuo codice qua
 python3 dataset_creation_AMI.py --split all
+python3 yolo_dataset.py --split all
