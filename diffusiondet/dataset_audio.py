@@ -66,7 +66,7 @@ class DiffusionDetAudioDataset(IterableDataset):
                     h,w = item["instances"].image_size
                     box = box/torch.tensor([w,h,w,h], dtype=torch.float32)
                     box = box_xyxy_to_cxcywh(box)
-                    f.write(f"{label} {box[0]} {box[1]} {box[2]} {box[3]} \n")
+                    f.write(f"{0} {box[0]} {box[1]} {box[2]} {box[3]} \n")
             
             save_image(item["image"].unsqueeze(0), image_file)
             

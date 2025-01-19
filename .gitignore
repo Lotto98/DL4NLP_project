@@ -8,5 +8,6 @@
 /diffusiondet/pretrained_models
 /diffusiondet/__pycache__
 prepare_dataset.log
+train_net.log
 dataset_yolo
 /runs
