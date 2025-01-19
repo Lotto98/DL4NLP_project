@@ -12,3 +12,4 @@ train_net.log
 dataset_yolo
 /runs
 yolo*.pt
+diffusiondet/util/__pycache__
