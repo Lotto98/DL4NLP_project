@@ -242,7 +242,7 @@ if __name__ == "__main__":
         print(meeting_ids)
         create_audio_ami(meeting_ids, "test")
         
-        unique_ids = list(unique_speakers_ids_train | unique_speakers_ids_test)
+        #unique_ids = list(unique_speakers_ids_train | unique_speakers_ids_test)
         
         print()
         
@@ -250,7 +250,7 @@ if __name__ == "__main__":
         print(len(unique_speakers_ids_validation))
         print(len(unique_speakers_ids_test))
         
-        print(len(unique_ids))
+        #print(len(unique_ids))
         
         #encoder = LabelEncoder().fit(unique_ids)
         
