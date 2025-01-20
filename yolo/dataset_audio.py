@@ -76,6 +76,7 @@ class DiffusionDetAudioDataset(IterableDataset):
             json.dump(audio_dict, f)
     
     def segments_generator(self, idx_audio):
+        
         # Copy dataset_dict to avoid modifying the original one
         audio_dict = self.annotations_per_audio[idx_audio].copy()       
         
@@ -286,6 +287,8 @@ class DiffusionDetAudioDataset(IterableDataset):
         self.max_boxes = 0
         
         for idx_audio in trange(len(self.annotations_per_audio), leave=False, disable=False):
+            
+            #print(self.annotations_per_audio[idx_audio]["file_name"])
             
             segments, max_boxes_segment = self.segments_generator(idx_audio)
             
