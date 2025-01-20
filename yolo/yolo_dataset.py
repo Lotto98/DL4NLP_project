@@ -1,6 +1,5 @@
-from diffusiondet.dataset_audio import DiffusionDetAudioDataset
+from dataset_audio import DiffusionDetAudioDataset
 from argparse import Namespace, ArgumentParser
-
 
 if __name__ == "__main__":
     parser = ArgumentParser()

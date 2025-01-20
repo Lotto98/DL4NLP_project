@@ -1,12 +1,9 @@
-/DiffusionDet-main/
-/datasets_old
-/datasets
-/output_*
-/output
-/models
+/.old/output*
 /.idea
-/diffusiondet/pretrained_models
-/diffusiondet/__pycache__
+/datasets
+/yolo/__pycache__
+/.old/diffusiondet/util/__pycache__
+/.old/diffusiondet/__pycache__
 prepare_dataset.log
 train_net.log
 dataset_yolo
