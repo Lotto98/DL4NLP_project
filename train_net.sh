@@ -10,4 +10,4 @@
 eval "$(conda shell.bash hook)"
 conda activate DL4NLP_yolo
 
-python3 yolo/yolo.py --model yolo11n.pt --epochs 1000
+python3 yolo/yolo.py --model yolo11n.pt --epochs 1000 --batch 24
