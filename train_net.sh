@@ -5,9 +5,9 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gpus-per-task=1
-#SBATCH -o train_net_nano_new_annotations_1216.log
+#SBATCH -o train_net_nano_new_annotations_1216_resumed.log
 
 eval "$(conda shell.bash hook)"
 conda activate DL4NLP_yolo
 
-python3 yolo/yolo.py --model yolo11n.pt --epochs 1000 --batch 24
+python3 yolo/yolo.py --model resume --epochs 1000 --batch 24 --path-model runs/detect/train13/weights/last.pt
