@@ -31,3 +31,8 @@ F1 = 2 * (precision * recall) / (precision + recall)
 
 print(f"Results for YOLO {name} with image size {image_size}:")
 print(f"Precision: {precision:.3f}, Recall: {recall:.3f}, F1: {F1:.3f}")
+
+#save to csv using pandas
+os.makedirs("tests", exist_ok=True)
+df = pd.DataFrame({"precision": [precision], "recall": [recall], "F1": [F1]})
+df.to_csv(f"tests/yolo_{name}_{image_size}.csv", index=False)
