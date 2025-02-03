@@ -66,13 +66,13 @@ def get_YOLO_best_params(model_path: str, batch: int, n_calls: int = 20):
     # Define the search space
     space = [
         Real(0.001, 0.3, name='conf'),  # Confidence threshold range
-        #Real(0.1, 0.6, name='iou')     # IoU threshold range
+        Real(0.1, 0.6, name='iou')     # IoU threshold range
     ]
 
     @use_named_args(space)
-    def objective(conf):
+    def objective(conf, iou):
         """Objective function to minimize (negative F1)."""
-        metrics = model.val(batch=batch, conf=conf, iou=0, agnostic_nms=True).results_dict
+        metrics = model.val(batch=batch, conf=conf, iou=iou, agnostic_nms=True).results_dict
         precision = metrics.get("metrics/precision(B)", 0)
         recall = metrics.get("metrics/recall(B)", 0)
         F1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0
@@ -81,32 +81,64 @@ def get_YOLO_best_params(model_path: str, batch: int, n_calls: int = 20):
     # Run Bayesian optimization
     res = gp_minimize(objective, space, n_calls=n_calls, random_state=42)
     
-    best_conf = res.x[0]
+    best_conf, best_iou = res.x
     best_F1 = -res.fun
-    print(f"Best F1: {best_F1:.4f}, Best conf: {best_conf:.3f}") #, Best iou: {best_iou:.3f}")
+    print(f"Best F1: {best_F1:.4f}, Best conf: {best_conf:.3f}, Best iou: {best_iou:.3f}")
 
-    return best_conf, best_F1
+    return best_conf, best_iou, best_F1
 
-def get_YOLO_best_batch_size(model_path:str, dataset_name:str, imgsz:int, conf=0.25, iou=0):
+def get_YOLO_best_batch_size(model_path:str, dataset_name:str, imgsz:int, conf=1, iou=0):
     model = YOLO(model_path, task="detect").eval()
     file_names = get_sorted_image_paths(f"datasets/ami_yolo/images/{dataset_name}")
-    best_batch = 1024
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    lower_bound = 0.85
+    upper_bound = 0.95
+    torch.cuda.empty_cache()
+    total_memory, _ = torch.cuda.mem_get_info() # Total GPU memory
+    print("Total memory",total_memory)
+    batch_size = 100
+    
     while True:
         try:
-            batch_files = file_names[0:best_batch]
-            results = model.predict(batch_files, batch=best_batch, 
+            # Create a dummy input with the current batch size
+            batch_files = file_names[0:batch_size]
+            
+            # Forward pass to check memory usage
+            model.predict(batch_files, batch=batch_size, 
                                     conf=conf, 
                                     iou=iou, 
                                     agnostic_nms=True,
                                     imgsz=imgsz)
-            break
-        except:
-            print(f"Batch size {best_batch} failed")
-            best_batch = best_batch - 10
-    
-    print(f"Best batch size: {best_batch}")
-    return best_batch - 10
+            
+            # Calculate current memory usage
+            free_memory, _ = torch.cuda.mem_get_info()
+            memory_usage = 1-(free_memory / total_memory)
 
+            print(free_memory, total_memory, memory_usage, flush=True)
+            
+            # Check if memory usage is within the target range
+            if lower_bound <= memory_usage <= upper_bound:
+                print(f"Optimal batch size found: {batch_size}")
+                print(f"Memory usage: {memory_usage * 100:.2f}%")
+                return batch_size
+            elif memory_usage < lower_bound:
+                # Increase batch size if memory usage is too low
+                batch_size += 5
+            else:
+                # Decrease batch size if memory usage is too high
+                batch_size = max(1, batch_size - 5)
+            
+            # Clear memory to avoid OOM errors
+            torch.cuda.empty_cache()
+
+        except RuntimeError as e:
+            if 'out of memory' in str(e):
+                # If OOM occurs, reduce batch size and clear cache
+                torch.cuda.empty_cache()
+                batch_size = max(1, batch_size - 5)
+            else:
+                raise e
+            
 def yolo_inference(model_path:str, dataset_name:str, imgsz:int, batch = 1024, conf=0.25, iou=0) -> Results:
     model = YOLO(model_path, task="detect").eval()
     file_names = get_sorted_image_paths(f"datasets/ami_yolo/images/{dataset_name}")
@@ -212,12 +244,10 @@ def whisper_inference(yolo:bool, imgsz:int, max_size:int = -1, batch_size:int = 
             conf = float(df["conf"].values[0])
         else:
             batch = get_YOLO_best_batch_size(yolo_model_path, "validation", imgsz=imgsz)
-            #conf, f1 = get_YOLO_best_params(yolo_model_path, 64, 10)
-            conf = 0.25
-            f1 = 0.5
+            conf, iou, f1 = get_YOLO_best_params(yolo_model_path, 64, 10)
             
             # save to csv
-            df = pd.DataFrame({"batch": [batch], "conf": [conf], "f1": [f1]})
+            df = pd.DataFrame({"batch": [batch], "conf": [conf], "iou":[iou] ,"f1": [f1]})
             df.to_csv(f"experiments/yolo_{model_name}_{image_size}.csv", index=False)
     
     print("Starting...")

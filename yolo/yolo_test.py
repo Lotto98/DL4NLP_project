@@ -18,10 +18,11 @@ if not os.path.exists(experiment_path):
 
 df = pd.read_csv(experiment_path)
 conf=float(df["conf"].values[0])
+iou=float(df["iou"].values[0])
 
 model_path = f"models/yolo_{name}_{image_size}.pt"
 model = YOLO(model_path, task="detect").eval()
-results = model.val(split="test", conf=conf).results_dict
+results = model.val(split="test", conf=conf, iou=iou).results_dict
 
 precision = results["metrics/precision(B)"]
 recall = results["metrics/recall(B)"]

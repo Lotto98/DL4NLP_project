@@ -82,6 +82,19 @@
         "configs/diffdet.ami.ast.yaml",
         "--eval-only"
       ]
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "justMyCode": false,
+      "name": "Launch post_processing.py",
+      "program": "${workspaceFolder}/yolo/post_processing.py",
+      "args": [
+        "--model-name",
+        "nano",
+        "--image-size",
+        "640"
+      ]
     }
   ],
   "inputs": [
