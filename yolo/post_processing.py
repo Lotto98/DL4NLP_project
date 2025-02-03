@@ -330,7 +330,7 @@ if __name__ == "__main__":
     model_path = f"models/yolo_{model_name}_{image_size}.pt"
     text_yolo, time_yolo = whisper_inference(True, yolo_model_path=model_path, imgsz=image_size)
     
-    print(f"Text with YOLO: {text_yolo}")
+    #print(f"Text with YOLO: {text_yolo}")
     #print(f"Text without YOLO: {text_no_yolo}")
     
     #WER calculation
