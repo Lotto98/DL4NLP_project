@@ -21,6 +21,8 @@ import gc
 
 import matplotlib.pyplot as plt
 
+from typing import List
+
 def plot_intervals(boxes_to_plot):
     
     fig, ax = plt.subplots(figsize=(10, len(boxes_to_plot) * 0.5))
@@ -38,7 +40,7 @@ def plot_intervals(boxes_to_plot):
     plt.grid(axis='x', linestyle='--', alpha=0.6)
     plt.show()
     
-def load_audio(audio_path, sample_rate):
+def load_audio(audio_path:str, sample_rate:int)->torch.Tensor:
     # Load the audio file
     f = open(audio_path, 'rb')
     waveform, sr = torchaudio.load(f)
@@ -93,7 +95,7 @@ def get_YOLO_best_params(model_path: str, batch: int, n_calls: int = 20):
     @use_named_args(space)
     def objective(conf, iou):
         """Objective function to minimize (negative F1)."""
-        metrics = model.val(batch=batch, conf=conf, iou=iou, agnostic_nms=True).results_dict
+        metrics = model.val(batch=batch, conf=conf, iou=1, agnostic_nms=True).results_dict
         precision = metrics.get("metrics/precision(B)", 0)
         recall = metrics.get("metrics/recall(B)", 0)
         F1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0
@@ -108,7 +110,7 @@ def get_YOLO_best_params(model_path: str, batch: int, n_calls: int = 20):
 
     return best_conf, best_iou, best_F1
 
-def get_YOLO_best_batch_size(model_path:str, dataset_name:str, imgsz:int, conf=1, iou=0):
+def get_YOLO_best_batch_size(model_path:str, dataset_name:str, imgsz:int, conf=0, iou=1):
     model = YOLO(model_path, task="detect").eval()
     file_names = get_sorted_image_paths(f"datasets/ami_yolo/images/{dataset_name}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -160,7 +162,7 @@ def get_YOLO_best_batch_size(model_path:str, dataset_name:str, imgsz:int, conf=1
             else:
                 raise e
             
-def yolo_inference(model_path:str, dataset_name:str, imgsz:int, batch = 1024, conf=0.25, iou=0) -> Results:
+def yolo_inference(model_path:str, dataset_name:str, imgsz:int, batch:int, conf:float, iou:int) -> Results:
     model = YOLO(model_path, task="detect").eval()
     file_names = get_sorted_image_paths(f"datasets/ami_yolo/images/{dataset_name}")
         
