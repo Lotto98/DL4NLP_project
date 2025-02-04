@@ -7,7 +7,7 @@ import torchaudio
 from ultralytics.engine.results import Results
 from ultralytics import YOLO
 import os
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import editdistance
 import pandas as pd
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
@@ -17,6 +17,27 @@ from skopt import gp_minimize
 from skopt.space import Real
 from skopt.utils import use_named_args
 
+import gc
+
+import matplotlib.pyplot as plt
+
+def plot_intervals(boxes_to_plot):
+    
+    fig, ax = plt.subplots(figsize=(10, len(boxes_to_plot) * 0.5))
+    y_ticks = np.arange(len(boxes_to_plot))
+    
+    for i, (_, start, _, end) in enumerate(boxes_to_plot):
+        ax.barh(y=i, width=end - start, left=start, height=0.4, color='skyblue', edgecolor='black')
+    
+    # Formatting
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels([f"{start:.1f}, {end:1f}" for _, start, _, end in boxes_to_plot])
+    ax.set_xlabel("Time")
+    ax.set_title("Intervals")
+    ax.invert_yaxis()  # Invert to have the first interval at the top
+    plt.grid(axis='x', linestyle='--', alpha=0.6)
+    plt.show()
+    
 def load_audio(audio_path, sample_rate):
     # Load the audio file
     f = open(audio_path, 'rb')
@@ -144,7 +165,7 @@ def yolo_inference(model_path:str, dataset_name:str, imgsz:int, batch = 1024, co
     file_names = get_sorted_image_paths(f"datasets/ami_yolo/images/{dataset_name}")
         
     total_results = []
-    for i in range(0, len(file_names), batch):
+    for i in trange(0, len(file_names), batch, desc="Yolo inference..."):
         batch_files = file_names[i:i+batch]
         results = model.predict(batch_files, batch=batch, 
                                 conf=conf, 
@@ -173,8 +194,6 @@ def post_process_yolo(resulted_objects: list[Results] = [],
                 return audio_file
         return None
     
-    #audios = {audio_file:load_audio(audio_file, sample_rate) for audio_file in audio_dict.keys()}
-    
     waveform = -1
     current_audio_name = ""
 
@@ -183,12 +202,33 @@ def post_process_yolo(resulted_objects: list[Results] = [],
         boxes = r.boxes.xyxy 
         preds = r.boxes.cls
         
-        #print(boxes)
+        if len(boxes) == 0:
+            continue
         
+        #sort boxes by from left to right (box1 y1 < box2 y1)
         boxes, indexes = torch.sort(boxes, dim=0)
         preds = preds[indexes]
         
-        #print(boxes)
+        merged_boxes = [boxes[0]]
+        
+        #merge consecutive boxes in the same box
+        # box = [x1, y1, x2, y2] with x constant
+        for box in boxes[1:]:
+            last_box = merged_boxes[-1]
+            
+            # if y1 (start) of the current box <= y2 (end) of the last box
+            # then the boxes are overlapping and 
+            # should be merged by updating the y2 of the last box to the max y2 of the two boxes
+            # else, the boxes are not overlapping and current box should be added to the list
+            if box[1] <= last_box[3]:
+                merged_boxes[-1][3] = max(last_box[3], box[3])
+            else:
+                merged_boxes.append(box)
+        
+        #plot_intervals(boxes)
+        #plot_intervals(merged_boxes)
+        
+        boxes = merged_boxes
         
         audio_name = get_audio_file(segment_id, audio_dict)
         starting_segment, ending_segment = audio_dict[audio_name]
@@ -197,15 +237,11 @@ def post_process_yolo(resulted_objects: list[Results] = [],
             waveform = load_audio(audio_name, sample_rate).squeeze(0)
             current_audio_name = audio_name
         
-        #print(audio_name, starting_segment, ending_segment)
-        
-        for box, pred in zip(boxes, preds):
-            
-            #print(box)
+        for box, pred in tqdm(zip(boxes, preds), desc="Post processing..."):
             
             start = ((box[1] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
             end = ((box[3] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
-            #print(start/sample_rate, end/sample_rate)
+            
             segment = waveform[int(start):int(end)]
             
             to_whisper.append(segment)
@@ -213,7 +249,6 @@ def post_process_yolo(resulted_objects: list[Results] = [],
             total_time += segment.shape[0] / sample_rate
     
     del waveform
-    import gc
     gc.collect()
     
     to_whisper = torch.concatenate(to_whisper)
@@ -242,6 +277,7 @@ def whisper_inference(yolo:bool, imgsz:int, max_size:int = -1, batch_size:int = 
             df = pd.read_csv(f"experiments/yolo_{model_name}_{image_size}.csv")
             batch = int(df["batch"].values[0])
             conf = float(df["conf"].values[0])
+            iou = float(df["iou"].values[0])
         else:
             batch = get_YOLO_best_batch_size(yolo_model_path, "validation", imgsz=imgsz)
             conf, iou, f1 = get_YOLO_best_params(yolo_model_path, 64, 10)
@@ -254,7 +290,7 @@ def whisper_inference(yolo:bool, imgsz:int, max_size:int = -1, batch_size:int = 
     start_time = time.time()
     
     if yolo:
-        results = yolo_inference(yolo_model_path, "test", imgsz, batch, conf, 0)
+        results = yolo_inference(yolo_model_path, "test", imgsz, batch, conf, iou)
         dataset, total_time = post_process_yolo(results, audio_dict)
     else:
         dataset, total_time = post_process_without_yolo(audio_dict)
