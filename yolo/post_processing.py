@@ -21,7 +21,7 @@ import gc
 import matplotlib.pyplot as plt
 
 from typing import List
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import multiprocessing
 
 from torchmetrics.detection import MeanAveragePrecision
 from ultralytics.utils.ops import xywh2xyxy
@@ -247,51 +247,50 @@ def erase_unconfident_boxes(boxes: torch.Tensor, scores: torch.Tensor, conf: flo
     mask = scores >= conf
     return boxes[mask], scores[mask]
 
-def filter_and_merge_boxes(results: list[dict], conf: float, filter: bool = True) -> list[dict]:
-    def process_result(r):
-        if filter:
-            clean_boxes, _ = erase_unconfident_boxes(r["boxes"], r["scores"], conf)
-        else:
-            clean_boxes = r["boxes"]
-        merged_boxes = merge_boxes(clean_boxes)
-        return {"boxes": merged_boxes, "labels": r["labels"]}
+def __filter_and_merge_boxes_single(args: tuple) -> dict:
+    
+    r, conf, filter = args
+    
+    if filter:
+        clean_boxes, _ = erase_unconfident_boxes(r["boxes"], r["scores"], conf)
+    else:
+        clean_boxes = r["boxes"]
+    merged_boxes = merge_boxes(clean_boxes)
+    return {"boxes": merged_boxes, "labels": r["labels"]}
 
-    new_results = []
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_result, r) for r in results]
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Filtering boxes...", disable=True):
-            new_results.append(future.result())
+def filter_and_merge_boxes(results: list[dict], conf: float, filter: bool = True, nprocesses=1) -> list[dict]:
+
+    args_list=[(r, conf, filter) for r in results]
+    
+    with multiprocessing.Pool(nprocesses) as pool:
+        new_results = list(tqdm(pool.imap(__filter_and_merge_boxes_single, args_list), total=len(args_list), desc="Filtering boxes..."))
 
     return new_results
 
 def yolo_inference(model_path: str, dataset_name: str, imgsz: int, batch: int, conf: float) -> list[dict]:
     model = YOLO(model_path, task="detect").eval()
     images_names = get_sorted_paths(f"datasets/ami_yolo/images/{dataset_name}")
-    
-    def process_batch(batch_files):
+        
+    total_results = []
+    for i in trange(0, len(images_names), batch, desc="Yolo inference..."):
+        batch_files = images_names[i:i+batch]
         results = model.predict(batch_files, batch=batch, 
                                 conf=conf, 
                                 iou=1, 
                                 agnostic_nms=True,
                                 imgsz=imgsz,
                                 verbose=False)
-        batch_results = []
         for r in results:
-            r = r.to("cpu")
-            new_r = {
-                "boxes": r.boxes.xyxy,
-                "scores": r.boxes.conf,
-                "labels": torch.zeros(len(r.boxes.xyxy), dtype=torch.int64)
-            }
-            batch_results.append(new_r)
-        return batch_results
-    
-    total_results = []
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_batch, images_names[i:i+batch]) for i in range(0, len(images_names), batch)]
-        for future in as_completed(futures):
-            total_results.extend(future.result())
-    
+            r=r.to("cpu")
+            new_r = {}
+            
+            boxes, scores = r.boxes.xyxy, r.boxes.conf
+            new_r["boxes"] = boxes
+            new_r["scores"] = scores
+            new_r["labels"] = torch.zeros(len(boxes), dtype=torch.int64)
+            
+            total_results.append(new_r)
+            
     return total_results
 
 def merge_boxes(boxes: torch.Tensor) -> torch.Tensor:
@@ -350,9 +349,9 @@ def post_process_yolo(resulted_objects: list[Results] = [],
         
         return local_to_whisper, total_time
     
-    with ThreadPoolExecutor() as executor:
-        futures = [executor.submit(process_segment, segment_id, r) for segment_id, r in enumerate(resulted_objects)]
-        for future in tqdm(as_completed(futures), total=len(futures), desc="Processing YOLO results..."):
+    with ProcessPoolExecutor() as executor:
+        futures = executor.map(process_segment, range(len(resulted_objects)), resulted_objects)
+        for future in tqdm(futures, total=len(resulted_objects), desc="Processing YOLO results..."):
             local_to_whisper, _ = future.result()
             to_whisper.extend(local_to_whisper)
     
