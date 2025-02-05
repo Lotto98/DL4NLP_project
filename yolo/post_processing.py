@@ -8,7 +8,6 @@ from ultralytics.engine.results import Results
 from ultralytics import YOLO
 import os
 from tqdm import tqdm, trange
-import editdistance
 import pandas as pd
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 from jiwer import wer, cer
@@ -22,6 +21,7 @@ import gc
 import matplotlib.pyplot as plt
 
 from typing import List
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from torchmetrics.detection import MeanAveragePrecision
 from ultralytics.utils.ops import xywh2xyxy
@@ -247,89 +247,79 @@ def erase_unconfident_boxes(boxes: torch.Tensor, scores: torch.Tensor, conf: flo
     mask = scores >= conf
     return boxes[mask], scores[mask]
 
-def filter_and_merge_boxes(results, conf: float, filter=True):
-    new_results=[]
-    for r in tqdm(results, desc="Filtering boxes...", disable=True):
-        new_r = {}
+def filter_and_merge_boxes(results: list[dict], conf: float, filter: bool = True) -> list[dict]:
+    def process_result(r):
         if filter:
             clean_boxes, _ = erase_unconfident_boxes(r["boxes"], r["scores"], conf)
         else:
             clean_boxes = r["boxes"]
         merged_boxes = merge_boxes(clean_boxes)
-        new_r["boxes"] = merged_boxes
-        new_r["labels"] = r["labels"]
-        new_results.append(new_r)
+        return {"boxes": merged_boxes, "labels": r["labels"]}
+
+    new_results = []
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_result, r) for r in results]
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Filtering boxes...", disable=True):
+            new_results.append(future.result())
+
     return new_results
 
 def yolo_inference(model_path:str, dataset_name:str, imgsz:int, batch:int, conf:float) -> List[dict]:
     model = YOLO(model_path, task="detect").eval()
     images_names = get_sorted_paths(f"datasets/ami_yolo/images/{dataset_name}")
     
-    count = 0
-    
     total_results = []
-    for i in trange(0, len(images_names), batch, desc="Yolo inference..."):
-        batch_files = images_names[i:i+batch]
+    
+    def process_batch(batch_files):
         results = model.predict(batch_files, batch=batch, 
                                 conf=conf, 
                                 iou=1, 
                                 agnostic_nms=True,
                                 imgsz=imgsz,
                                 verbose=False)
+        batch_results = []
         for r in results:
-            r=r.to("cpu")
+            r = r.to("cpu")
             new_r = {}
-            
             boxes, scores = r.boxes.xyxy, r.boxes.conf
             new_r["boxes"] = boxes
             new_r["scores"] = scores
             new_r["labels"] = torch.zeros(len(boxes), dtype=torch.int64)
-            
-            total_results.append(new_r)
-            count += 1
-            
+            batch_results.append(new_r)
+        return batch_results
+    
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_batch, images_names[i:i+batch]) for i in range(0, len(images_names), batch)]
+        for future in as_completed(futures):
+            total_results.extend(future.result())
+    
     return total_results
 
-def merge_boxes(boxes: torch.Tensor):
-    
+def merge_boxes(boxes: torch.Tensor) -> torch.Tensor:
     if len(boxes) == 0:
         return boxes
-    
-    #plot_intervals(boxes, Title="Original boxes")
-    
-    #sort boxes by from left to right (box1 y1 < box2 y1)
-    indexes = boxes[:, 1].argsort(dim=0, stable=True)
-    boxes = boxes[indexes]
-    
-    #plot_intervals(boxes, Title="Sorted boxes")
-    
+
+    # Ordina le scatole da sinistra a destra (box1 y1 < box2 y1)
+    boxes = boxes[boxes[:, 1].argsort(dim=0, stable=True)]
+
+    # Inizializza merged_boxes come un tensore
     merged_boxes = [boxes[0]]
-    
-    #merge consecutive boxes in the same box
-    # box = [x1, y1, x2, y2] with x constant
-    for i, box in enumerate(boxes[1:]):
-        
-        # if y1 (start) of the current box <= y2 (end) of the last box
-        # then the boxes are overlapping and 
-        # should be merged by updating the y2 of the last box to the max y2 of the two boxes
-        # else, the boxes are not overlapping and current box should be added to the list
+
+    # Unisci le scatole consecutive nella stessa scatola
+    for box in boxes[1:]:
         if box[1] <= merged_boxes[-1][3]:
             merged_boxes[-1][3] = max(merged_boxes[-1][3], box[3])
-            
         else:
             merged_boxes.append(box)
-    
-    merge_boxes = torch.stack(merged_boxes) if len(merged_boxes) > 0 else torch.Tensor([])
-    
-    return merge_boxes
+
+    return torch.stack(merged_boxes) if merged_boxes else torch.Tensor([])
 
 def post_process_yolo(resulted_objects: list[Results] = [], 
-                        audio_dict: dict = {}   # {"audio_file1": [starting_Segment, ending_Segment], "audio_file2": [starting_Segment, ending_Segment],}
-                    ):                          
+                      audio_dict: dict = {}   # {"audio_file1": [starting_Segment, ending_Segment], "audio_file2": [starting_Segment, ending_Segment],}
+                     ) -> tuple[list[np.ndarray], float]:                          
     
     to_whisper = []
     total_time = 0
-        
     sample_rate = 16000
     seconds_per_segment = 11
     
@@ -339,45 +329,42 @@ def post_process_yolo(resulted_objects: list[Results] = [],
                 return audio_file
         return None
     
-    waveform = -1
-    current_audio_name = ""
-
-    for segment_id, r in tqdm(enumerate(resulted_objects), desc="Processing YOLO results...", total=len(resulted_objects)):
+    def process_segment(segment_id, r):
+        nonlocal total_time
+        local_to_whisper = []
         
         boxes = r["boxes"]
-        
         if len(boxes) == 0:
-            continue
+            return local_to_whisper, 0
         
         audio_name = get_audio_file(segment_id, audio_dict)
         starting_segment, ending_segment = audio_dict[audio_name]
         
-        if audio_name != current_audio_name:
-            waveform = load_audio(audio_name, sample_rate).squeeze(0)
-            current_audio_name = audio_name
+        waveform = load_audio(audio_name, sample_rate).squeeze(0)
         
         for box in boxes:
-            
             start = ((box[1] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
             end = ((box[3] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
-            
             segment = waveform[int(start):int(end)]
-            
-            to_whisper.append(segment)
-            
+            local_to_whisper.append(segment)
             total_time += segment.shape[0] / sample_rate
+        
+        return local_to_whisper, total_time
+    
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(process_segment, segment_id, r) for segment_id, r in enumerate(resulted_objects)]
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Processing YOLO results..."):
+            local_to_whisper, _ = future.result()
+            to_whisper.extend(local_to_whisper)
     
     del waveform
     gc.collect()
     
-    to_whisper = torch.concatenate(to_whisper)
-    
+    to_whisper = torch.cat(to_whisper)
     to_whisper = to_whisper.split(30 * sample_rate, dim=0)
-    
     to_whisper = [segment.numpy() for segment in to_whisper]
     
     if to_whisper[-1].shape[0] > 0:
-        
         # Pad the last segment
         to_whisper[-1] = np.pad(to_whisper[-1], (0, 30 * sample_rate - to_whisper[-1].shape[0]), mode="constant")
     
