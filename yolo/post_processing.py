@@ -243,7 +243,7 @@ def get_F1(predictions, ground_truths) -> float:
         
     return np.mean(F1_scores)
 
-def erase_unconfident_boxes(boxes: torch.Tensor, scores: torch.Tensor, conf: float):
+def erase_unconfident_boxes(boxes: torch.Tensor, scores: torch.Tensor, conf: float) -> torch.Tensor:
     mask = scores >= conf
     return boxes[mask], scores[mask]
 
@@ -264,11 +264,9 @@ def filter_and_merge_boxes(results: list[dict], conf: float, filter: bool = True
 
     return new_results
 
-def yolo_inference(model_path:str, dataset_name:str, imgsz:int, batch:int, conf:float) -> List[dict]:
+def yolo_inference(model_path: str, dataset_name: str, imgsz: int, batch: int, conf: float) -> list[dict]:
     model = YOLO(model_path, task="detect").eval()
     images_names = get_sorted_paths(f"datasets/ami_yolo/images/{dataset_name}")
-    
-    total_results = []
     
     def process_batch(batch_files):
         results = model.predict(batch_files, batch=batch, 
@@ -280,14 +278,15 @@ def yolo_inference(model_path:str, dataset_name:str, imgsz:int, batch:int, conf:
         batch_results = []
         for r in results:
             r = r.to("cpu")
-            new_r = {}
-            boxes, scores = r.boxes.xyxy, r.boxes.conf
-            new_r["boxes"] = boxes
-            new_r["scores"] = scores
-            new_r["labels"] = torch.zeros(len(boxes), dtype=torch.int64)
+            new_r = {
+                "boxes": r.boxes.xyxy,
+                "scores": r.boxes.conf,
+                "labels": torch.zeros(len(r.boxes.xyxy), dtype=torch.int64)
+            }
             batch_results.append(new_r)
         return batch_results
     
+    total_results = []
     with ThreadPoolExecutor() as executor:
         futures = [executor.submit(process_batch, images_names[i:i+batch]) for i in range(0, len(images_names), batch)]
         for future in as_completed(futures):
