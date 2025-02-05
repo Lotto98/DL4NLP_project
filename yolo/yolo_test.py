@@ -1,7 +1,9 @@
-from ultralytics.models import YOLO
+from post_processing import yolo_inference, get_gt_boxes_per_image, get_F1, filter_and_merge_boxes
 import argparse
 import pandas as pd
 import os
+from torchmetrics.detection import MeanAveragePrecision
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--name", type=str, choices=["nano", "medium"])
@@ -17,22 +19,22 @@ if not os.path.exists(experiment_path):
     raise FileNotFoundError(f"{experiment_path} not found")
 
 df = pd.read_csv(experiment_path)
+batch=int(df["batch"].values[0])
 conf=float(df["conf"].values[0])
-iou=float(df["iou"].values[0])
 
-model_path = f"models/yolo_{name}_{image_size}.pt"
-model = YOLO(model_path, task="detect").eval()
-results = model.val(split="test", conf=conf, iou=iou).results_dict
+results = yolo_inference(model_path = f"models/yolo_{name}_{image_size}.pt", 
+                dataset_name="test", conf=conf, 
+                imgsz=image_size, batch=batch)
+results = filter_and_merge_boxes(results, conf=conf, filter=False)
 
-precision = results["metrics/precision(B)"]
-recall = results["metrics/recall(B)"]
+ground_truth = get_gt_boxes_per_image("test")
 
-F1 = 2 * (precision * recall) / (precision + recall)
+F1 = get_F1(results, ground_truth)
 
 print(f"Results for YOLO {name} with image size {image_size}:")
-print(f"Precision: {precision:.3f}, Recall: {recall:.3f}, F1: {F1:.3f}")
+print(f"F1: {F1:.3f}")
 
 #save to csv using pandas
 os.makedirs("tests", exist_ok=True)
-df = pd.DataFrame({"precision": [precision], "recall": [recall], "F1": [F1]})
+df = pd.DataFrame({"F1": [F1]})
 df.to_csv(f"tests/yolo_{name}_{image_size}.csv", index=False)

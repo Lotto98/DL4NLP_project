@@ -23,19 +23,26 @@ import matplotlib.pyplot as plt
 
 from typing import List
 
-def plot_intervals(boxes_to_plot):
+from torchmetrics.detection import MeanAveragePrecision
+from ultralytics.utils.ops import xywh2xyxy
+
+def plot_intervals(boxes_to_plot, Title="Intervals"):
     
-    fig, ax = plt.subplots(figsize=(10, len(boxes_to_plot) * 0.5))
+    w = 1126 # original image size
+    
+    fig, ax = plt.subplots(figsize=(15, len(boxes_to_plot) + 5))
     y_ticks = np.arange(len(boxes_to_plot))
+    x_ticks = np.arange(0, w, 100)
     
     for i, (_, start, _, end) in enumerate(boxes_to_plot):
         ax.barh(y=i, width=end - start, left=start, height=0.4, color='skyblue', edgecolor='black')
     
     # Formatting
     ax.set_yticks(y_ticks)
+    ax.set_xticks(x_ticks)
     ax.set_yticklabels([f"{start:.1f}, {end:1f}" for _, start, _, end in boxes_to_plot])
     ax.set_xlabel("Time")
-    ax.set_title("Intervals")
+    ax.set_title(Title)
     ax.invert_yaxis()  # Invert to have the first interval at the top
     plt.grid(axis='x', linestyle='--', alpha=0.6)
     plt.show()
@@ -78,41 +85,52 @@ def post_process_without_yolo(audio_dict: dict = {}):
     
     return to_whisper, total_time
 
-def get_sorted_image_paths(folder_path: str) -> list:
+def get_sorted_paths(folder_path: str) -> list:
     image_files = [f for f in os.listdir(folder_path) if os.path.isfile(os.path.join(folder_path, f))]
     image_files.sort(key=lambda x: int(os.path.splitext(x)[0]))
     return [os.path.join(folder_path, f) for f in image_files]
 
 def get_YOLO_best_params(model_path: str, batch: int, n_calls: int = 20):
-    model = YOLO(model_path, task="detect").eval()
+    
+    print("Starting Bayesian optimization to find the best confidence threshold...")
     
     # Define the search space
     space = [
-        Real(0.001, 0.3, name='conf'),  # Confidence threshold range
-        Real(0.1, 0.6, name='iou')     # IoU threshold range
+        Real(0.001, 0.4, name='conf'),  # Confidence threshold range
     ]
-
+    
+    ground_truth = get_gt_boxes_per_image("validation")
+    
+    results = yolo_inference(model_path = model_path, 
+                    dataset_name="validation", conf=0, 
+                    imgsz=image_size, batch=batch)
+    
+    bar = tqdm(total=n_calls, desc="Bayesian optimization...")
+    
     @use_named_args(space)
-    def objective(conf, iou):
+    def objective(conf):
         """Objective function to minimize (negative F1)."""
-        metrics = model.val(batch=batch, conf=conf, iou=1, agnostic_nms=True).results_dict
-        precision = metrics.get("metrics/precision(B)", 0)
-        recall = metrics.get("metrics/recall(B)", 0)
-        F1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0
+        
+        new_results = filter_and_merge_boxes(results, conf)
+        F1 = get_F1(new_results, ground_truth)
+        
+        bar.update(1)
+        bar.set_description(f"Bayesian optimization... Conf: {conf:.3f}, F1: {F1:.4f}")
+        
         return -F1  # Minimize negative F1 to maximize F1
 
     # Run Bayesian optimization
     res = gp_minimize(objective, space, n_calls=n_calls, random_state=42)
     
-    best_conf, best_iou = res.x
+    best_conf = res.x[0]
     best_F1 = -res.fun
-    print(f"Best F1: {best_F1:.4f}, Best conf: {best_conf:.3f}, Best iou: {best_iou:.3f}")
+    print("Best Conf: {:.3f}, Best F1: {:.4f}".format(best_conf, best_F1))
 
-    return best_conf, best_iou, best_F1
+    return best_conf, best_F1
 
 def get_YOLO_best_batch_size(model_path:str, dataset_name:str, imgsz:int, conf=0, iou=1):
     model = YOLO(model_path, task="detect").eval()
-    file_names = get_sorted_image_paths(f"datasets/ami_yolo/images/{dataset_name}")
+    file_names = get_sorted_paths(f"datasets/ami_yolo/images/{dataset_name}")
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     lower_bound = 0.85
     upper_bound = 0.95
@@ -127,11 +145,12 @@ def get_YOLO_best_batch_size(model_path:str, dataset_name:str, imgsz:int, conf=0
             batch_files = file_names[0:batch_size]
             
             # Forward pass to check memory usage
-            model.predict(batch_files, batch=batch_size, 
+            _ = model.predict(batch_files, batch=batch_size, 
                                     conf=conf, 
                                     iou=iou, 
                                     agnostic_nms=True,
-                                    imgsz=imgsz)
+                                    imgsz=imgsz,
+                                    verbose=False)
             
             # Calculate current memory usage
             free_memory, _ = torch.cuda.mem_get_info()
@@ -161,24 +180,148 @@ def get_YOLO_best_batch_size(model_path:str, dataset_name:str, imgsz:int, conf=0
                 batch_size = max(1, batch_size - 5)
             else:
                 raise e
+
+def get_gt_boxes_per_image(dataset_name: str) -> List[dict]:
+    
+    labels_names = get_sorted_paths(f"datasets/ami_yolo/labels/{dataset_name}")
+    gt_boxes_per_image = []
+    
+    h,w = 1126,166 # original image size
+    resize_tensor = torch.tensor([w,h,w,h], dtype=torch.float32)
+    
+    for label_file in tqdm(labels_names, desc="Loading ground truth boxes..."):
+        with open(label_file, "r") as f:
+            labels_image = f.read().splitlines()
             
-def yolo_inference(model_path:str, dataset_name:str, imgsz:int, batch:int, conf:float, iou:int) -> Results:
-    model = YOLO(model_path, task="detect").eval()
-    file_names = get_sorted_image_paths(f"datasets/ami_yolo/images/{dataset_name}")
+            gt_boxes = []
+            for label in labels_image:
+                label = label.split(" ")
+                gt_box = torch.Tensor([float(label[1]), float(label[2]), float(label[3]), float(label[4])])
+                gt_boxes.append(xywh2xyxy(gt_box))
+            
+            gt_boxes = (torch.stack(gt_boxes) * resize_tensor) if len(gt_boxes) > 0 else torch.Tensor([])
+            gt_boxes = merge_boxes(gt_boxes)
+            
+            instance = {"boxes": gt_boxes, 
+                        "labels": torch.zeros(len(gt_boxes), dtype=torch.int64)}
+            
+            gt_boxes_per_image.append(instance)
         
+    return gt_boxes_per_image
+
+
+def get_F1(predictions, ground_truths) -> float:
+    
+    predictions = [p["boxes"] for p in predictions]
+    ground_truths = [g["boxes"] for g in ground_truths]
+
+    #3MAS implementation
+    #https://github.com/Lebourdais/3MAS/blob/main/eval_full.py
+    
+    from pyannote.metrics.detection import DetectionPrecisionRecallFMeasure
+    from pyannote.core import Annotation, Segment, Timeline
+    
+    #Evaluate all audio
+    uem = Timeline([Segment(0, 1126)])
+    
+    F1_scores = []
+    
+    for i in trange(len(predictions), desc="Calculating F1...", disable=True):
+        annotation_p = Annotation()
+        if len(predictions[i]) > 0:
+            prediction = Segment(predictions[i][:,[1,3]][0][0].item(), predictions[i][:,[1,3]][0][1].item())
+            annotation_p[prediction] = 0
+        
+        annotation_gt = Annotation()
+        if len(ground_truths[i]) > 0:
+            ground_truth = Segment(ground_truths[i][:,[1,3]][0][0].item(), ground_truths[i][:,[1,3]][0][1].item())
+        annotation_gt[ground_truth] = 0
+        
+        metric = DetectionPrecisionRecallFMeasure()
+        F1=metric.compute_metric(metric.compute_components(annotation_p, annotation_gt, uem=uem))
+        F1_scores.append(F1)
+        
+    return np.mean(F1_scores)
+
+def erase_unconfident_boxes(boxes: torch.Tensor, scores: torch.Tensor, conf: float):
+    mask = scores >= conf
+    return boxes[mask], scores[mask]
+
+def filter_and_merge_boxes(results, conf: float, filter=True):
+    new_results=[]
+    for r in tqdm(results, desc="Filtering boxes...", disable=True):
+        new_r = {}
+        if filter:
+            clean_boxes, _ = erase_unconfident_boxes(r["boxes"], r["scores"], conf)
+        else:
+            clean_boxes = r["boxes"]
+        merged_boxes = merge_boxes(clean_boxes)
+        new_r["boxes"] = merged_boxes
+        new_r["labels"] = r["labels"]
+        new_results.append(new_r)
+    return new_results
+
+def yolo_inference(model_path:str, dataset_name:str, imgsz:int, batch:int, conf:float) -> List[dict]:
+    model = YOLO(model_path, task="detect").eval()
+    images_names = get_sorted_paths(f"datasets/ami_yolo/images/{dataset_name}")
+    
+    count = 0
+    
     total_results = []
-    for i in trange(0, len(file_names), batch, desc="Yolo inference..."):
-        batch_files = file_names[i:i+batch]
+    for i in trange(0, len(images_names), batch, desc="Yolo inference..."):
+        batch_files = images_names[i:i+batch]
         results = model.predict(batch_files, batch=batch, 
                                 conf=conf, 
-                                iou=iou, 
+                                iou=1, 
                                 agnostic_nms=True,
-                                imgsz=imgsz)
+                                imgsz=imgsz,
+                                verbose=False)
         for r in results:
             r=r.to("cpu")
-            total_results.append(r)
-    
+            new_r = {}
+            
+            boxes, scores = r.boxes.xyxy, r.boxes.conf
+            new_r["boxes"] = boxes
+            new_r["scores"] = scores
+            new_r["labels"] = torch.zeros(len(boxes), dtype=torch.int64)
+            
+            total_results.append(new_r)
+            count += 1
+            
     return total_results
+
+def merge_boxes(boxes: torch.Tensor):
+    
+    if len(boxes) == 0:
+        return boxes
+    
+    #plot_intervals(boxes, Title="Original boxes")
+    
+    #sort boxes by from left to right (box1 y1 < box2 y1)
+    indexes = boxes[:, 1].argsort(dim=0, stable=True)
+    boxes = boxes[indexes]
+    
+    #plot_intervals(boxes, Title="Sorted boxes")
+    
+    merged_boxes = [boxes[0]]
+    
+    #merge consecutive boxes in the same box
+    # box = [x1, y1, x2, y2] with x constant
+    for i, box in enumerate(boxes[1:]):
+        
+        # if y1 (start) of the current box <= y2 (end) of the last box
+        # then the boxes are overlapping and 
+        # should be merged by updating the y2 of the last box to the max y2 of the two boxes
+        # else, the boxes are not overlapping and current box should be added to the list
+        if box[1] <= merged_boxes[-1][3]:
+            merged_boxes[-1][3] = max(merged_boxes[-1][3], box[3])
+            
+        else:
+            merged_boxes.append(box)
+    
+    merge_boxes = torch.stack(merged_boxes) if len(merged_boxes) > 0 else torch.Tensor([])
+    
+    return merge_boxes
 
 def post_process_yolo(resulted_objects: list[Results] = [], 
                         audio_dict: dict = {}   # {"audio_file1": [starting_Segment, ending_Segment], "audio_file2": [starting_Segment, ending_Segment],}
@@ -199,38 +342,12 @@ def post_process_yolo(resulted_objects: list[Results] = [],
     waveform = -1
     current_audio_name = ""
 
-    for segment_id, r in enumerate(resulted_objects):
+    for segment_id, r in tqdm(enumerate(resulted_objects), desc="Processing YOLO results...", total=len(resulted_objects)):
         
-        boxes = r.boxes.xyxy 
-        preds = r.boxes.cls
+        boxes = r["boxes"]
         
         if len(boxes) == 0:
             continue
-        
-        #sort boxes by from left to right (box1 y1 < box2 y1)
-        boxes, indexes = torch.sort(boxes, dim=0)
-        preds = preds[indexes]
-        
-        merged_boxes = [boxes[0]]
-        
-        #merge consecutive boxes in the same box
-        # box = [x1, y1, x2, y2] with x constant
-        for box in boxes[1:]:
-            last_box = merged_boxes[-1]
-            
-            # if y1 (start) of the current box <= y2 (end) of the last box
-            # then the boxes are overlapping and 
-            # should be merged by updating the y2 of the last box to the max y2 of the two boxes
-            # else, the boxes are not overlapping and current box should be added to the list
-            if box[1] <= last_box[3]:
-                merged_boxes[-1][3] = max(last_box[3], box[3])
-            else:
-                merged_boxes.append(box)
-        
-        #plot_intervals(boxes)
-        #plot_intervals(merged_boxes)
-        
-        boxes = merged_boxes
         
         audio_name = get_audio_file(segment_id, audio_dict)
         starting_segment, ending_segment = audio_dict[audio_name]
@@ -239,7 +356,7 @@ def post_process_yolo(resulted_objects: list[Results] = [],
             waveform = load_audio(audio_name, sample_rate).squeeze(0)
             current_audio_name = audio_name
         
-        for box, pred in tqdm(zip(boxes, preds), desc="Post processing..."):
+        for box in boxes:
             
             start = ((box[1] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
             end = ((box[3] / 99.818181) * sample_rate) + ((segment_id - starting_segment) * seconds_per_segment * sample_rate)
@@ -279,21 +396,26 @@ def whisper_inference(yolo:bool, imgsz:int, max_size:int = -1, batch_size:int = 
             df = pd.read_csv(f"experiments/yolo_{model_name}_{image_size}.csv")
             batch = int(df["batch"].values[0])
             conf = float(df["conf"].values[0])
-            iou = float(df["iou"].values[0])
         else:
             batch = get_YOLO_best_batch_size(yolo_model_path, "validation", imgsz=imgsz)
-            conf, iou, f1 = get_YOLO_best_params(yolo_model_path, 64, 10)
+            conf, f1 = get_YOLO_best_params(yolo_model_path, batch, 20)
             
             # save to csv
-            df = pd.DataFrame({"batch": [batch], "conf": [conf], "iou":[iou] ,"f1": [f1]})
+            df = pd.DataFrame({"batch": [batch], "conf": [conf], "f1": [f1]})
             df.to_csv(f"experiments/yolo_{model_name}_{image_size}.csv", index=False)
     
-    print("Starting...")
+    print("Starting pipeline...")
     start_time = time.time()
     
     if yolo:
-        results = yolo_inference(yolo_model_path, "test", imgsz, batch, conf, iou)
+        results = yolo_inference(yolo_model_path, "test", imgsz, batch, conf)
+        results = filter_and_merge_boxes(results, conf, filter=False)
         dataset, total_time = post_process_yolo(results, audio_dict)
+        
+        #clean memory
+        del results
+        gc.collect()
+        
     else:
         dataset, total_time = post_process_without_yolo(audio_dict)
     
@@ -303,7 +425,7 @@ def whisper_inference(yolo:bool, imgsz:int, max_size:int = -1, batch_size:int = 
         
     processor, model = load_whisper()
     results = []
-    for i in tqdm(range(0, len(dataset), batch_size), desc="Processing Batches"):
+    for i in tqdm(range(0, len(dataset), batch_size), desc="Processing Whisper Batches"):
         batch = dataset[i:i+batch_size]
         
         # Preprocess waveforms

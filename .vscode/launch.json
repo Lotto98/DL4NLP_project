@@ -95,6 +95,19 @@
         "--image-size",
         "640"
       ]
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "justMyCode": false,
+      "name": "Launch test.py",
+      "program": "${workspaceFolder}/yolo/yolo_test.py",
+      "args": [
+        "--name",
+        "nano",
+        "--image-size",
+        "640"
+      ]
     }
   ],
   "inputs": [
