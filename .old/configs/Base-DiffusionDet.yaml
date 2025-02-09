@@ -1,0 +1,39 @@
+MODEL:
+  DEVICE: "cuda"
+  META_ARCHITECTURE: "DiffusionDet"
+  AST:
+    OUT_FEATURES: ["AST_2", "AST_5", "AST_9", "AST_12"]
+    OUT_CHANNELS: 768
+  FPN:
+    IN_FEATURES: ["AST_2", "AST_5", "AST_9", "AST_12"]
+    OUT_CHANNELS: 256
+  ROI_HEADS:
+    IN_FEATURES:  ['p0', 'p1', 'p2', 'p3']
+  ROI_BOX_HEAD:
+    POOLER_TYPE: "ROIAlignV2"
+    POOLER_RESOLUTION: 7
+    POOLER_SAMPLING_RATIO: 2
+SOLVER:
+  NUM_EPOCHS: 50
+  CHECKPOINT_PERIOD: 1000
+  BASE_LR: 2.5e-05
+  STEPS: (210000, 250000)
+  WARMUP_FACTOR: 0.01 #1.0 / 1000
+  #WARMUP_ITERS: 1000
+  #WARMUP_METHOD: "constant"
+  WEIGHT_DECAY: 0.0001
+  OPTIMIZER: "ADAMW"
+  BACKBONE_MULTIPLIER_FPN: 1.0    # keep same with BASE_LR.
+  BACKBONE_MULTIPLIER_AST: 1.0   # AST is pretrained, so use smaller lr. How much smaller is a hyperparameter.
+  CLIP_GRADIENTS:
+    ENABLED: True
+    CLIP_TYPE: "full_model"
+    CLIP_VALUE: 1.0
+    NORM_TYPE: 2.0
+SEED: 40244023
+#TEST:
+  #EVAL_PERIOD: 100000000000 #29312 #test every epoch supposing batch size = 1
+#DATALOADER:
+#  FILTER_EMPTY_ANNOTATIONS: False
+#  NUM_WORKERS: 1
+VERSION: 2

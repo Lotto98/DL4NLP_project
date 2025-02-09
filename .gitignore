@@ -1,0 +1,12 @@
+/.old/output*
+/.idea
+/datasets
+/yolo/__pycache__
+/.old/diffusiondet/util/__pycache__
+/.old/diffusiondet/__pycache__
+prepare_dataset.log
+train_net.log
+dataset_yolo
+/runs
+yolo*.pt
+diffusiondet/util/__pycache__

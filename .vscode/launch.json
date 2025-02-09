@@ -1,0 +1,129 @@
+{
+  "configurations": [
+    {
+      "name": "Python Debugger: Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "name": "Launch demo.py",
+      "program": "${workspaceFolder}/demo.py",
+      "args": [
+        "--config-file",
+        "configs/diffdet.lvis.swinbase.yaml",
+        "--webcam",
+        "--confidence-threshold",
+        "80",
+        "--opts",
+        "MODEL.WEIGHTS",
+        "models/diffdet_lvis_swinbase.pth"
+      ]
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "name": "Launch demo.py image",
+      "program": "${workspaceFolder}/demo.py",
+      "args": [
+        "--config-file",
+        "configs/diffdet.lvis.swinbase.yaml",
+        "--input",
+        "datasets/coco/train2017/000000000139.jpg",
+        "--confidence-threshold",
+        "80",
+        "--opts",
+        "MODEL.WEIGHTS",
+        "models/diffdet_lvis_swinbase.pth"
+      ]
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "justMyCode": false,
+      "name": "Launch train_net.py --resume",
+      "program": "${workspaceFolder}/train_net.py",
+      "args": [
+        "--num-gpus",
+        "1",
+        "--config-file",
+        //"configs/diffdet.coco.res50.yaml"
+        "configs/diffdet.ami.ast.yaml",
+        "--resume"
+      ]
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "justMyCode": false,
+      "name": "Launch train_net.py",
+      "program": "${workspaceFolder}/train_net.py",
+      "args": [
+        "--num-gpus",
+        "1",
+        "--config-file",
+        //"configs/diffdet.coco.res50.yaml"
+        "configs/diffdet.ami.ast.yaml"
+      ]
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "justMyCode": false,
+      "name": "Launch train_net.py with eval-only",
+      "program": "${workspaceFolder}/train_net.py",
+      "args": [
+        "--num-gpus",
+        "1",
+        "--config-file",
+        "configs/diffdet.ami.ast.yaml",
+        "--eval-only"
+      ]
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "justMyCode": false,
+      "name": "Launch post_processing.py",
+      "program": "${workspaceFolder}/yolo/post_processing.py",
+      "args": [
+        "--model-name",
+        "nano",
+        "--image-size",
+        "640"
+      ]
+    },
+    {
+      "type": "debugpy",
+      "request": "launch",
+      "justMyCode": false,
+      "name": "Launch test.py",
+      "program": "${workspaceFolder}/yolo/yolo_test.py",
+      "args": [
+        "--name",
+        "nano",
+        "--image-size",
+        "640"
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "type": "pickString",
+      "id": "configFile",
+      "description": "Select the configuration file",
+      "options": [
+        "configs/diffdet.coco.res101.yaml",
+        "configs/diffdet.coco.res50.300boxes.yaml",
+        "configs/diffdet.coco.res50.yaml",
+        "configs/diffdet.coco.swinbase.yaml",
+        "configs/diffdet.lvis.res101.yaml",
+        "configs/diffdet.lvis.res50.yaml",
+        "configs/diffdet.lvis.swinbase.yaml"
+      ]
+    }
+  ]
+}

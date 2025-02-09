@@ -1,0 +1,27 @@
+_BASE_: "Base-DiffusionDet.yaml"
+MODEL:
+  BACKBONE:
+    NAME: "build_ASTModel_backbone_fpn"
+  AST:
+    PRETRAINED_MODEL: "MIT/ast-finetuned-audioset-10-10-0.448-v2"
+  DiffusionDet:
+    NUM_HEADS: 6
+    HIDDEN_DIM: 256
+    NUM_PROPOSALS: 21
+    NUM_CLASSES: 2
+    SAMPLE_STEP: 1
+    NMS_THRESH: 0.5
+    BOX_RENEWAL_THRESHOLD: 0.5
+    DEEP_SUPERVISION: True
+    USE_FED_LOSS: False
+  EMA_ENABLED: False
+DATASETS:
+  TRAIN: ("ami_train",)
+  # EVAL: ("ami_val",)
+  TEST:  ("ami_validation",)
+INPUT:
+  SAMPLING_RATE: 16000
+  SECONDS_PER_SEGMENT: 11 #30
+  TOT_BATCH_SIZE: 1 #14
+  NUM_WORKERS: 1
+  TRAINING_DATASET_LENGTH: 26650
