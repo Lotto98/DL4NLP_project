@@ -190,7 +190,7 @@ def create_annotations_ami_from_file(split:str="train"):
         with open(f'datasets/ami/annotations/{split}.json', 'w') as fp:
             json.dump(new_annotations, fp)
         
-    annotations = download_annotations()
+    annotations = download_annotations(split)
     create_json_file(annotations, split)
     
     return list(annotations.keys()), [0]
