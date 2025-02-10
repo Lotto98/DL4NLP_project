@@ -38,8 +38,7 @@ Final project of the DL4NLP course.
 ```bash
 usage: yolo_training.py [-h] 
 --model {yolo11n.pt,yolo11s.pt,yolo11m.pt,yolo11l.pt,yolo11x.pt,resume} 
---batch BATCH --epochs EPOCHS [--imgsz IMGSZ]
-                        [--path-model PATH_MODEL]
+--batch BATCH --epochs EPOCHS [--imgsz IMGSZ] [--path-model PATH_MODEL]
 ```
 
 | Option                            | Description                                                 |
