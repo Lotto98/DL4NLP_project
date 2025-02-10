@@ -67,7 +67,7 @@ usage: yolo_test.py [-h] [--name {nano,medium}] [--image-size {640,1216}]
 ## Whisper inference with YOLO
 
 ```sh
-usage: post_processing.py [-h] [--model-name {nano,medium}] [--image-size {640,1216}]
+usage: yolo_whisper.py [-h] [--model-name {nano,medium}] [--image-size {640,1216}]
 ```
 
 | Option                            | Description                                                 |

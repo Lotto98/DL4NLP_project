@@ -1,4 +1,4 @@
-from post_processing import yolo_inference, get_gt_boxes_per_image, get_F1, filter_and_merge_boxes
+from yolo.yolo_whisper import yolo_inference, get_gt_boxes_per_image, get_F1, filter_and_merge_boxes
 import argparse
 import pandas as pd
 import os
